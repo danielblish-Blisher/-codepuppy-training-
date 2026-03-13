@@ -4,14 +4,15 @@
 let _woChartFcr=null, _woChartSla=null, _woChartRepeat=null;
 
 function render_workorders() {
-  const srFilt = document.getElementById('wo-sr-filter')?.value||'';
-
-  // Build store array from pre-aggregated STORE_WO_METRICS
+  // Apply org slicer to store list
+  const f = ORG_FILTERS;
   const stores = (STORE_WO_METRICS||[]).filter(m => {
     const stLower = (m.store_type||'').toLowerCase();
     if (BANNER_FILTER==='walmart' && stLower.includes('sam')) return false;
     if (BANNER_FILTER==='sams'    && !stLower.includes('sam')) return false;
-    if (srFilt && m.sr_director !== srFilt) return false;
+    if (f.sr  && m.sr_director !== f.sr)  return false;
+    if (f.dir && m.director    !== f.dir) return false;
+    if (f.rm  && m.rm          !== f.rm)  return false;
     return true;
   }).map(m => ({
     sn:        String(m.store_nbr||''),
@@ -27,13 +28,6 @@ function render_workorders() {
     slaRate:   (m.sla_y+m.sla_n)>0 ? m.sla_y/(m.sla_y+m.sla_n) : null,
     avgTrips:  m.avg_trips,
   })).sort((a,b)=>(a.fcrRate??1)-(b.fcrRate??1));
-
-  // Populate Sr Director filter (once)
-  const srSel=document.getElementById('wo-sr-filter');
-  if(srSel && srSel.options.length<=1){
-    const srs=[...new Set((STORE_WO_METRICS||[]).map(m=>m.sr_director).filter(Boolean))].sort();
-    srs.forEach(s=>{const o=document.createElement('option');o.value=s;o.textContent=s;srSel.appendChild(o);});
-  }
 
   _renderWoKpis(stores);
   _renderFcrByProbChart();

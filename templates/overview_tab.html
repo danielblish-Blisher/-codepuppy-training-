@@ -43,14 +43,8 @@
       <div class="lg:col-span-2 bg-white rounded-xl shadow overflow-hidden">
         <div class="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
           <h2 class="font-semibold text-sm">Stores Needing Most Training Attention</h2>
-          <div class="flex gap-2">
-            <select id="ov-sr-filter" onchange="render_overview()"
-                    class="text-xs border rounded px-2 py-1 text-wmt-gray160">
-              <option value="">All Sr Directors</option>
-            </select>
-            <button onclick="exportOverviewTable()"
-                    class="text-xs bg-wmt-blue text-white rounded px-2 py-1">↓ CSV</button>
-          </div>
+          <button onclick="exportOverviewTable()"
+                  class="text-xs bg-wmt-blue text-white rounded px-2 py-1">↓ CSV</button>
         </div>
         <div class="overflow-auto max-h-72">
           <table class="w-full text-xs sticky-head">

@@ -194,8 +194,18 @@ compact_tech = [{
 } for t in tech_align]
 
 
-# ── Compact tech-stores (only user_id + store_nbr for EPA join) ──────────
-# EPA_CERTS is empty right now so this is lightweight; keep the join ready.
+# ── Compact tech-stores — include org hierarchy fields for slicer ───────
+# Also build ORG_BY_UID: user_id → {sr, dir, rm} for JS filter cascade.
+
+org_by_uid: dict = {}
+for ts in tech_stores:
+    uid = str(ts.get("user_id") or "").strip()
+    if uid and uid not in org_by_uid:
+        org_by_uid[uid] = {
+            "sr":  (ts.get("sr_director") or "").strip(),
+            "dir": (ts.get("director")    or "").strip(),
+            "rm":  (ts.get("rm")          or "").strip(),
+        }
 
 compact_tech_stores = [
     {"user_id": str(ts.get("user_id") or ""), "store_nbr": str(ts.get("store_nbr") or "")}
@@ -257,7 +267,7 @@ obs_stats = {
     "groups":  len(obs_group_set),
 }
 
-# Keep 500 most recent rows for the detail table (Date desc)
+# Keep 2000 most recent rows for the detail table (Date desc)
 observations_sorted = sorted(
     observations,
     key=lambda o: str(o.get("Date") or ""),
@@ -266,12 +276,12 @@ observations_sorted = sorted(
 OBS_COLS = (
     "Question_group", "question", "answer",
     "User_Id", "tech_name", "Org_Role",
-    "Direct_Manager", "FM_Sr_Director",
+    "Direct_Manager", "FM_Sr_Director", "FM_Director", "FM_Regional_Manager",
     "Store", "Date", "status",
 )
 compact_obs_rows = [
     {k: str(o.get(k) or "")[:100] for k in OBS_COLS}
-    for o in observations_sorted[:500]
+    for o in observations_sorted[:2000]
 ]
 
 
@@ -401,7 +411,8 @@ data_block += js_var("EXAM_REG",         compact_exam)
 data_block += js_var("TECH_ALIGNMENT",   compact_tech)
 # Tech-to-store pairs (compact: user_id + store_nbr only)
 data_block += js_var("TECH_STORES",      compact_tech_stores)
-# Observations - pre-aggregated + 500 recent rows
+data_block += js_var("ORG_BY_UID",        org_by_uid)
+# Observations - pre-aggregated + 2000 recent rows
 data_block += js_var("OBS_STATS",        obs_stats)
 data_block += js_var("OBS_GROUPS",       obs_groups)
 data_block += js_var("OBS_TREND",        obs_trend)
@@ -427,6 +438,7 @@ TEMPLATE_ORDER = [
     "head.html",
     # data injected here
     "header.html",
+    "filter_bar.html",
     # tab layouts
     "overview_tab.html",
     "technicians_tab.html",
@@ -443,6 +455,7 @@ TEMPLATE_ORDER = [
     "refrigerant_js.html",
     "epa_js.html",
     "topgun_js.html",
+    "filters_shared_js.html",
     # closing
     "footer.html",
 ]

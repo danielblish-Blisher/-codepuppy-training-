@@ -29,14 +29,8 @@
     <div class="bg-white rounded-xl shadow overflow-hidden">
       <div class="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
         <h2 class="font-semibold text-sm">WO Performance by Store</h2>
-        <div class="flex gap-2">
-          <select id="wo-sr-filter" onchange="render_workorders()"
-                  class="text-xs border rounded px-2 py-1">
-            <option value="">All Sr Directors</option>
-          </select>
-          <button onclick="exportWoTable()"
-                  class="text-xs bg-wmt-blue text-white rounded px-2 py-1">↓ CSV</button>
-        </div>
+        <button onclick="exportWoTable()"
+                class="text-xs bg-wmt-blue text-white rounded px-2 py-1">↓ CSV</button>
       </div>
       <div class="overflow-auto max-h-96">
         <table class="w-full text-xs sticky-head">

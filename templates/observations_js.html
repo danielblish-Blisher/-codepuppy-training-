@@ -4,25 +4,21 @@
 let _obsChartGroups=null, _obsChartTrend=null;
 
 function render_observations() {
-  const srFilt  = document.getElementById('obs-sr-filter')?.value||'';
   const grpFilt = document.getElementById('obs-group-filter')?.value||'';
 
-  // Populate filters once
-  const srSel  = document.getElementById('obs-sr-filter');
+  // Populate question-group filter once
   const grpSel = document.getElementById('obs-group-filter');
-  if(srSel && srSel.options.length<=1) {
-    (OBS_SR_LIST||[]).forEach(s=>{const o=document.createElement('option');o.value=s;o.textContent=s;srSel.appendChild(o);});
-  }
-  if(grpSel && grpSel.options.length<=1) {
+  if(grpSel && grpSel.options.length<=1)
     (OBS_GROUP_LIST||[]).forEach(g=>{const o=document.createElement('option');o.value=g;o.textContent=g;grpSel.appendChild(o);});
-  }
 
-  // Filter OBS_ROWS for the table (already compact)
-  const rows = (OBS_ROWS||[]).filter(o => {
-    if(srFilt  && o.FM_Sr_Director !== srFilt)  return false;
-    if(grpFilt && o.Question_group  !== grpFilt) return false;
-    return true;
-  });
+  // Apply org slicer + group filter to OBS_ROWS
+  const rows = filterByOrg(OBS_ROWS||[], {
+    sr:  'FM_Sr_Director',
+    dir: 'FM_Director',
+    rm:  'FM_Regional_Manager',
+    mgr: 'Direct_Manager',
+    tech:'tech_name',
+  }).filter(o => !grpFilt || o.Question_group === grpFilt);
 
   _renderObsKpis();
   _renderObsGroupChart();

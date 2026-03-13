@@ -17,16 +17,9 @@
       </div>
     </div>
 
-    <!-- Filters -->
+    <!-- Tab-specific filters (Level + Exam) -->
     <div class="bg-white rounded-xl shadow p-4">
       <div class="flex flex-wrap gap-3 items-end">
-        <div>
-          <label class="text-xs text-wmt-gray100 block mb-1">Sr Director</label>
-          <select id="tech-sr-filter" onchange="render_technicians()"
-                  class="text-xs border rounded px-2 py-1.5 min-w-[160px]">
-            <option value="">All</option>
-          </select>
-        </div>
         <div>
           <label class="text-xs text-wmt-gray100 block mb-1">Tech Level</label>
           <select id="tech-level-filter" onchange="render_technicians()"
@@ -45,7 +38,7 @@
           </select>
         </div>
         <button onclick="exportTechTable()"
-                class="text-xs bg-wmt-blue text-white rounded px-3 py-1.5">↓ CSV</button>
+                class="text-xs bg-wmt-blue text-white rounded px-3 py-1.5 ml-auto">↓ CSV</button>
       </div>
     </div>
 

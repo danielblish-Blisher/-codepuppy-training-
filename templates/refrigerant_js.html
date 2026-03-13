@@ -4,17 +4,29 @@
 let _rChartType=null, _rChartReason=null, _rChartTrend=null, _rChartSr=null;
 
 function render_refrigerant() {
-  _renderRefrigKpis();
-  _renderRefrigInsight();
-  _renderTypeChart();
-  _renderReasonChart();
-  _renderTrendChart();
-  _renderSrChart();
-  _renderRefrigTable();
+  const base = filterByOrg(REFRIG_RECENT||[], {
+    sr:  'fm_sr_director',
+    dir: 'fm_director',
+    rm:  'fm_regional_mgr',
+  });
+  const isFiltered = Object.values(ORG_FILTERS).some(Boolean);
+  _renderRefrigKpis(base, isFiltered);
+  _renderRefrigInsight(base, isFiltered);
+  _renderTypeChart(base, isFiltered);
+  _renderReasonChart(base, isFiltered);
+  _renderTrendChart(isFiltered);
+  _renderSrChart(isFiltered);
+  _renderRefrigTable(base);
 }
 
-function _renderRefrigKpis() {
-  const s = REFRIG_STATS || {};
+function _renderRefrigKpis(rows, isFiltered) {
+  const s = isFiltered ? {
+    total_events: rows.length,
+    total_lbs:    rows.reduce((a,r)=>a+parseFloat(r.lbs_used||0),0).toFixed(1),
+    stores:       new Set(rows.map(r=>r.store_nbr).filter(Boolean)).size,
+    types:        new Set(rows.map(r=>r.refrigerant_type_name).filter(Boolean)).size,
+  } : (REFRIG_STATS||{});
+  const note = isFiltered ? '<span class="text-xs text-yellow-600 font-medium ml-1">(filtered sample)</span>' : '';
   const cards = [
     { label:'Total Events',       val: fmt(s.total_events||0), sub:'refrigerant records',    color:'text-wmt-blue' },
     { label:'Total Pounds Used',  val: fmt(s.total_lbs||0,0),  sub:'all refrigerant types',  color:'text-wmt-blue' },
@@ -23,32 +35,34 @@ function _renderRefrigKpis() {
   ];
   document.getElementById('refrig-kpis').innerHTML = cards.map(c=>`
     <div class="kpi-card bg-white rounded-xl shadow p-4">
-      <div class="text-xs text-wmt-gray100 font-medium mb-1">${c.label}</div>
+      <div class="text-xs text-wmt-gray100 font-medium mb-1">${c.label}${note}</div>
       <div class="text-2xl font-black ${c.color}">${c.val}</div>
       <div class="text-xs text-wmt-gray100 mt-1">${c.sub}</div>
     </div>`).join('');
 }
 
-function _renderRefrigInsight() {
-  const s     = REFRIG_STATS || {};
-  const top   = (REFRIG_BY_TYPE||[])[0];
-  const topR  = (REFRIG_BY_REASON||[])[0];
-  const topSr = (REFRIG_BY_SR||[])[0];
+function _renderRefrigInsight(rows, isFiltered) {
+  const s     = isFiltered ? { total_events:rows.length, total_lbs:rows.reduce((a,r)=>a+parseFloat(r.lbs_used||0),0), stores:new Set(rows.map(r=>r.store_nbr)).size, types:new Set(rows.map(r=>r.refrigerant_type_name)).size } : (REFRIG_STATS||{});
+  const typeAgg = reAgg(rows, r=>r.refrigerant_type_name, r=>parseFloat(r.lbs_used||0));
+  const reasonAgg = reAgg(rows, r=>r.refrigerant_reason, null);
+  const top   = typeAgg[0]   || (REFRIG_BY_TYPE||[])[0];
+  const topR  = reasonAgg[0] || (REFRIG_BY_REASON||[])[0];
+  const topSr = isFiltered ? null : (REFRIG_BY_SR||[])[0];
   document.getElementById('refrig-insight').innerHTML = `
-    <strong>💡 Refrigerant Activity Summary:</strong>
-    Over the last 12 months, <strong>${fmt(s.total_events||0)}</strong> refrigerant events
-    totaling <strong>${fmt(s.total_lbs||0,0)} lbs</strong> were recorded across
+    <strong>💡 Refrigerant Activity${isFiltered?' (Filtered)':''}:</strong>
+    <strong>${fmt(s.total_events||0)}</strong> events totaling
+    <strong>${fmt(s.total_lbs||0,0)} lbs</strong> across
     <strong>${fmt(s.stores||0)}</strong> stores using
-    <strong>${fmt(s.types||0)}</strong> distinct refrigerant types.
-    ${top ? `<strong>${top.type}</strong> is the most-used refrigerant
-    (<strong>${fmt(top.lbs,0)} lbs</strong> in ${fmt(top.events)} events).` : ''}
-    ${topR ? `Most common reason: <strong>${topR.reason}</strong> (${fmt(topR.events)} events).` : ''}
-    ${topSr ? `Sr Director <strong>${topSr.sr}</strong> has the highest usage
-    (<strong>${fmt(topSr.lbs,0)} lbs</strong>).` : ''}`;
+    <strong>${fmt(s.types||0)}</strong> refrigerant types.
+    ${top ? `Top type: <strong>${top.type||top.key}</strong> (<strong>${fmt(top.lbs||0,0)} lbs</strong>).` : ''}
+    ${topR ? `Most common reason: <strong>${topR.reason||topR.key}</strong>.` : ''}
+    ${topSr ? `Highest region: <strong>${topSr.sr}</strong> (<strong>${fmt(topSr.lbs,0)} lbs</strong>).` : ''}`;
 }
 
-function _renderTypeChart() {
-  const data = (REFRIG_BY_TYPE||[]).slice(0,15);
+function _renderTypeChart(rows, isFiltered) {
+  const data = isFiltered
+    ? reAgg(rows, r=>r.refrigerant_type_name, r=>parseFloat(r.lbs_used||0)).slice(0,15)
+    : (REFRIG_BY_TYPE||[]).slice(0,15).map(d=>({key:d.type, events:d.events, lbs:d.lbs}));
   const ctx  = document.getElementById('chart-refrig-type')?.getContext('2d');
   if (!ctx) return;
   if (_rChartType) _rChartType.destroy();
@@ -60,7 +74,7 @@ function _renderTypeChart() {
   _rChartType = new Chart(ctx, {
     type: 'bar',
     data: {
-      labels: data.map(d => d.type.length>28 ? d.type.slice(0,28)+'\u2026' : d.type),
+      labels: data.map(d => (d.key||d.type||'').length>28 ? (d.key||d.type).slice(0,28)+'…' : d.key||d.type),
       datasets: [{ label:'Lbs Used', data: data.map(d=>d.lbs),
         backgroundColor: data.map((_,i)=>colors[i%colors.length]), borderRadius:4 }]
     },
@@ -76,8 +90,10 @@ function _renderTypeChart() {
   });
 }
 
-function _renderReasonChart() {
-  const data = (REFRIG_BY_REASON||[]).slice(0,10);
+function _renderReasonChart(rows, isFiltered) {
+  const data = isFiltered
+    ? reAgg(rows, r=>r.refrigerant_reason, null).slice(0,10)
+    : (REFRIG_BY_REASON||[]).slice(0,10).map(d=>({key:d.reason, events:d.events, lbs:d.lbs}));
   const ctx  = document.getElementById('chart-refrig-reason')?.getContext('2d');
   if (!ctx) return;
   if (_rChartReason) _rChartReason.destroy();
@@ -96,9 +112,9 @@ function _renderReasonChart() {
   _rChartReason = new Chart(ctx, {
     type: 'bar',
     data: {
-      labels: data.map(d => d.reason),
+      labels: data.map(d => d.key||d.reason),
       datasets: [{ label:'Events', data: data.map(d=>d.events),
-        backgroundColor: data.map(d=>REASON_COLORS[d.reason]||'#c2c2c2'), borderRadius:4 }]
+        backgroundColor: data.map(d=>REASON_COLORS[d.key||d.reason]||'#c2c2c2'), borderRadius:4 }]
     },
     options: {
       responsive:true, maintainAspectRatio:false, indexAxis:'y',
@@ -112,8 +128,8 @@ function _renderReasonChart() {
   });
 }
 
-function _renderTrendChart() {
-  const trend  = REFRIG_TREND || [];
+function _renderTrendChart(isFiltered) {
+  const trend  = REFRIG_TREND || [];  // Always use global monthly trend, it’s pre-aggregated
   const labels = trend.map(t => t.month);
   const lbs    = trend.map(t => t.lbs);
   const events = trend.map(t => t.events);
@@ -143,8 +159,8 @@ function _renderTrendChart() {
   });
 }
 
-function _renderSrChart() {
-  const data = (REFRIG_BY_SR||[]).slice(0,15);
+function _renderSrChart(isFiltered) {
+  const data = isFiltered ? [] : (REFRIG_BY_SR||[]).slice(0,15);  // Sr chart uses global data only
   const ctx  = document.getElementById('chart-refrig-sr')?.getContext('2d');
   if (!ctx) return;
   if (_rChartSr) _rChartSr.destroy();
@@ -167,10 +183,9 @@ function _renderSrChart() {
   });
 }
 
-function _renderRefrigTable() {
+function _renderRefrigTable(rows) {
   const tbody = document.getElementById('refrig-table-body');
   if (!tbody) return;
-  const rows = REFRIG_RECENT || [];
   tbody.innerHTML = rows.map((r,i) => {
     const isOds = r.is_ods === 'True' || r.is_ods === 'true' || r.is_ods === '1';
     return `<tr class="hover:bg-wmt-gray10 text-xs ${i%2===0?'':'bg-gray-50/50'}">

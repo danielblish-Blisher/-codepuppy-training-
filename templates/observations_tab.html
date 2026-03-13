@@ -15,15 +15,8 @@
       </div>
     </div>
 
-    <!-- Filters -->
+    <!-- Tab-specific filter (Question Group) -->
     <div class="bg-white rounded-xl shadow p-4 flex flex-wrap gap-3 items-end">
-      <div>
-        <label class="text-xs text-wmt-gray100 block mb-1">Sr Director</label>
-        <select id="obs-sr-filter" onchange="render_observations()"
-                class="text-xs border rounded px-2 py-1.5 min-w-[160px]">
-          <option value="">All</option>
-        </select>
-      </div>
       <div>
         <label class="text-xs text-wmt-gray100 block mb-1">Question Group</label>
         <select id="obs-group-filter" onchange="render_observations()"
@@ -31,7 +24,7 @@
           <option value="">All Groups</option>
         </select>
       </div>
-      <button onclick="exportObsTable()" class="text-xs bg-wmt-blue text-white rounded px-3 py-1.5">↓ CSV</button>
+      <button onclick="exportObsTable()" class="text-xs bg-wmt-blue text-white rounded px-3 py-1.5 ml-auto">↓ CSV</button>
     </div>
 
     <div class="bg-white rounded-xl shadow overflow-hidden">

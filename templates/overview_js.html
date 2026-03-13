@@ -60,6 +60,8 @@ function _computeStoreScores() {
       sn, sr: m.sr_director||'', dir: m.director||'', rm: m.rm||'',
       store_type: m.store_type||'',
       wo_total: m.total_wos,
+      fcr_y: m.fcr_y, fcr_n: m.fcr_n,
+      sla_y: m.sla_y, sla_n: m.sla_n,
       fcrRate:  fcrFailRate,   // failure rate (lower = better)
       slaRate:  slaFailRate,
       repeatRate, avgTrips: m.avg_trips, epaMissRate,
@@ -71,8 +73,14 @@ function _computeStoreScores() {
 
 function _computeOrgScores(storeScores) {
   if (_orgScores) return _orgScores;
+  _orgScores = _computeOrgScoresFromList(Object.values(storeScores));
+  return _orgScores;
+}
+
+/** Build director rollup from any array of store score objects */
+function _computeOrgScoresFromList(storeList) {
   const dirs = {};
-  Object.values(storeScores).forEach(s => {
+  storeList.forEach(s => {
     const key = `${s.sr}||${s.dir}`;
     if (!dirs[key]) dirs[key] = {
       sr: s.sr, dir: s.dir,
@@ -88,7 +96,7 @@ function _computeOrgScores(storeScores) {
     d.wo   += s.wo_total;
   });
   const avg = arr => arr.length ? arr.reduce((a,b)=>a+b,0)/arr.length : null;
-  _orgScores = Object.values(dirs).map(d => ({
+  return Object.values(dirs).map(d => ({
     ...d,
     score: avg(d.scores),
     fcrRate: avg(d.fcr),
@@ -97,7 +105,17 @@ function _computeOrgScores(storeScores) {
     epaPct: d.epaT > 0 ? d.epaV/d.epaT : null,
     storeCount: d.scores.length,
   })).sort((a,b) => (b.score||0)-(a.score||0));
-  return _orgScores;
+}
+
+/** Filter the full storeScores dict to an array using ORG_FILTERS */
+function _filteredStoreList(storeScores) {
+  const f = ORG_FILTERS;
+  return Object.values(storeScores).filter(s => {
+    if (f.sr  && s.sr  !== f.sr)  return false;
+    if (f.dir && s.dir !== f.dir) return false;
+    if (f.rm  && s.rm  !== f.rm)  return false;
+    return true;
+  });
 }
 
 // ── Charts ───────────────────────────────────────────────────────────
@@ -179,11 +197,11 @@ function _renderExamTrend() {
   });
 }
 
-function _renderDistChart(storeScores) {
-  const high = Object.values(storeScores).filter(s => s.score >= 70).length;
-  const med  = Object.values(storeScores).filter(s => s.score >= 40 && s.score < 70).length;
-  const low  = Object.values(storeScores).filter(s => s.score != null && s.score < 40).length;
-  const na   = Object.values(storeScores).filter(s => s.score == null).length;
+function _renderDistChart(filteredStores) {
+  const high = filteredStores.filter(s => s.score >= 70).length;
+  const med  = filteredStores.filter(s => s.score >= 40 && s.score < 70).length;
+  const low  = filteredStores.filter(s => s.score != null && s.score < 40).length;
+  const na   = filteredStores.filter(s => s.score == null).length;
   const ctx = document.getElementById('chart-score-dist')?.getContext('2d');
   if (!ctx) return;
   if (_distChart) _distChart.destroy();
@@ -210,9 +228,8 @@ function _renderDistChart(storeScores) {
 }
 
 // ── Tables ───────────────────────────────────────────────────────────
-function _renderStoreTable(storeScores, srFilter) {
-  const rows = Object.values(storeScores)
-    .filter(s => !srFilter || s.sr === srFilter)
+function _renderStoreTable(filteredStores) {
+  const rows = filteredStores
     .filter(s => s.score != null)
     .sort((a,b) => (b.score||0)-(a.score||0))
     .slice(0, 50);
@@ -260,26 +277,37 @@ function _renderDirectorTable(orgScores) {
     </tr>`).join('');
 }
 
-function _renderKpis(storeScores) {
-  const scoreList = Object.values(storeScores).map(s=>s.score).filter(s=>s!=null);
+function _renderKpis(filteredStores) {
+  const scoreList = filteredStores.map(s=>s.score).filter(s=>s!=null);
   const avgScore  = scoreList.length ? scoreList.reduce((a,b)=>a+b,0)/scoreList.length : null;
 
-  // Global FCR/SLA from STORE_WO_METRICS
+  // Aggregate FCR/SLA from filtered stores' raw counts
   let totalFcrY=0, totalFcrN=0, totalSlaY=0, totalSlaW=0;
-  (STORE_WO_METRICS||[]).forEach(m => {
-    totalFcrY += m.fcr_y; totalFcrN += m.fcr_n;
-    totalSlaY += m.sla_y; totalSlaW += m.sla_n;
+  filteredStores.forEach(s => {
+    totalFcrY += s.fcr_y||0; totalFcrN += s.fcr_n||0;
+    totalSlaY += s.sla_y||0; totalSlaW += s.sla_n||0;
   });
   const fcrDen = totalFcrY+totalFcrN;
   const slaDen = totalSlaY+totalSlaW;
   const fcrRate = fcrDen > 0 ? totalFcrY/fcrDen : null;
   const slaRate = slaDen > 0 ? totalSlaY/slaDen : null;
 
-  const techTotal = (TECH_ALIGNMENT||[]).length;
-  const today     = new Date();
-  const epaTot    = (EPA_CERTS||[]).length;
-  const epaValid  = (EPA_CERTS||[]).filter(c=>c.expiry_date&&new Date(c.expiry_date)>today).length;
-  const epaPct    = epaTot ? epaValid/epaTot : null;
+  // Tech count filtered by current org filters
+  const f   = ORG_FILTERS;
+  const obu = ORG_BY_UID || {};
+  const techTotal = (TECH_ALIGNMENT||[]).filter(t => {
+    if (!f.sr && !f.dir && !f.rm) return true;
+    const org = obu[String(t.user_id||'').toLowerCase()] || {};
+    if (f.sr  && org.sr  !== f.sr)  return false;
+    if (f.dir && org.dir !== f.dir) return false;
+    if (f.rm  && org.rm  !== f.rm)  return false;
+    return true;
+  }).length;
+
+  const today   = new Date();
+  const epaTot  = (EPA_CERTS||[]).length;
+  const epaValid = (EPA_CERTS||[]).filter(c=>c.expiry_date&&new Date(c.expiry_date)>today).length;
+  const epaPct  = epaTot ? epaValid/epaTot : null;
 
   const cards = [
     { label:'Active Techs',   val: fmt(techTotal),  sub:'in alignment',     color:'text-wmt-blue' },
@@ -335,51 +363,44 @@ function _renderKpis(storeScores) {
   }).join('');
 }
 
-function _renderInsight(storeScores, orgScores) {
-  const highNeed = Object.values(storeScores).filter(s=>s.score>=70).length;
+function _renderInsight(filteredStores, orgScores) {
+  const highNeed = filteredStores.filter(s=>s.score>=70).length;
   const topSr    = orgScores[0];
-  const totalWos = (STORE_WO_METRICS||[]).reduce((a,m)=>a+m.total_wos, 0);
+  const totalWos = filteredStores.reduce((a,s)=>a+(s.wo_total||0), 0);
+  const isFiltered = Object.values(ORG_FILTERS).some(Boolean);
+  const filterNote = isFiltered ? ' <em>(filtered view)</em>' : '';
   document.getElementById('overview-insight').innerHTML = `
-    <strong>💡 Training Intelligence Summary:</strong>
+    <strong>💡 Training Intelligence Summary${filterNote}:</strong>
     Analyzing <strong>${fmt(totalWos)}</strong> work orders over the last 12 months across
-    <strong>${fmt(Object.keys(storeScores).length)}</strong> stores.
+    <strong>${fmt(filteredStores.length)}</strong> stores.
     <strong>${fmt(highNeed)}</strong> stores have a High Training Need score (≥70).
     ${topSr ? `Sr Director <strong>${topSr.sr}</strong> has the highest average gap score
     (<strong>${Math.round(topSr.score||0)}</strong>) across their ${topSr.storeCount} stores.`:''}
-    Use the filters and tabs above to drill into specific technicians, EPA certifications,
+    Use the filters above to drill into specific regions, technicians, EPA certifications,
     field observations, and Top Gun outcomes.`;
-}
-
-function _populateSrFilter(storeScores) {
-  const sel = document.getElementById('ov-sr-filter');
-  if (!sel) return;
-  const srs = [...new Set(Object.values(storeScores).map(s=>s.sr).filter(Boolean))].sort();
-  sel.innerHTML = `<option value="">All Sr Directors</option>` +
-    srs.map(s=>`<option value="${s}">${s}</option>`).join('');
 }
 
 // ── Main render ───────────────────────────────────────────────────────────
 function render_overview() {
-  _storeScores = null;  // invalidate cache on filter change
+  _storeScores = null;  // invalidate cache on each call (banner/filter may have changed)
   _orgScores   = null;
-  const storeScores = _computeStoreScores();
-  const orgScores   = _computeOrgScores(storeScores);
-  const srFilter    = document.getElementById('ov-sr-filter')?.value || '';
+  const allStores    = _computeStoreScores();
+  const filtered     = _filteredStoreList(allStores);
+  const orgScores    = _computeOrgScoresFromList(filtered);
 
-  _renderKpis(storeScores);
-  _renderInsight(storeScores, orgScores);
+  _renderKpis(filtered);
+  _renderInsight(filtered, orgScores);
   _renderSrChart(orgScores);
   _renderExamTrend();
-  _renderDistChart(storeScores);
-  _populateSrFilter(storeScores);
-  _renderStoreTable(storeScores, srFilter);
+  _renderDistChart(filtered);
+  _renderStoreTable(filtered);
   _renderDirectorTable(orgScores);
 }
 
 // Export
 function exportOverviewTable() {
-  const storeScores = _computeStoreScores();
-  const rows = Object.values(storeScores).sort((a,b)=>(b.score||0)-(a.score||0));
+  const allStores = _computeStoreScores();
+  const rows = _filteredStoreList(allStores).sort((a,b)=>(b.score||0)-(a.score||0));
   const header = 'Store,Sr Director,Director,RM,Gap Score,FCR %,SLA %,Repeat %,WOs\n';
   const csv = header + rows.map(s => [
     s.sn, s.sr, s.dir, s.rm,

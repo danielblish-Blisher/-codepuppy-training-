@@ -1,0 +1,182 @@
+<!-- ====== SHARED ORG FILTER ENGINE ====== -->
+<!-- Depends on: ORG_BY_UID, TECH_ALIGNMENT, ACTIVE_TAB -->
+<script>
+// ── Global filter state ──────────────────────────────────────────────────
+window.ORG_FILTERS = { sr:'', dir:'', rm:'', mgr:'', tech:'' };
+
+const FILTER_TABS = new Set(['overview','technicians','workorders','observations','refrigerant']);
+
+// Lazy-built org tree: sr → dir → rm → mgr → Set<tech_name>
+let _orgTree = null;
+
+function _buildOrgTree() {
+  if (_orgTree) return _orgTree;
+  _orgTree = {};
+  const obu = ORG_BY_UID || {};
+  (TECH_ALIGNMENT || []).forEach(t => {
+    const uid  = String(t.user_id || '').toLowerCase().trim();
+    const org  = obu[uid] || {};
+    const sr   = (org.sr  || '').trim() || '—';
+    const dir  = (org.dir || '').trim() || '—';
+    const rm   = (org.rm  || '').trim() || '—';
+    const mgr  = [t.mgr_first_name, t.mgr_last_name].filter(Boolean).join(' ').trim() || '—';
+    const tech = [t.first_name, t.last_name].filter(Boolean).join(' ').trim();
+    if (!tech) return;
+    if (!_orgTree[sr])              _orgTree[sr]              = {};
+    if (!_orgTree[sr][dir])         _orgTree[sr][dir]         = {};
+    if (!_orgTree[sr][dir][rm])     _orgTree[sr][dir][rm]     = {};
+    if (!_orgTree[sr][dir][rm][mgr])_orgTree[sr][dir][rm][mgr]= new Set();
+    _orgTree[sr][dir][rm][mgr].add(tech);
+  });
+  return _orgTree;
+}
+
+// ── Cascade helpers ──────────────────────────────────────────────────────
+function _setOpts(sel, opts, placeholder) {
+  if (!sel) return;
+  const cur = sel.value;
+  sel.innerHTML = `<option value="">${placeholder}</option>`;
+  [...opts].sort().forEach(o => {
+    if (!o || o === '—') return;
+    const opt = document.createElement('option');
+    opt.value = o; opt.textContent = o;
+    if (o === cur) opt.selected = true;
+    sel.appendChild(opt);
+  });
+}
+
+function _refreshCascade() {
+  const tree = _buildOrgTree();
+  const f    = ORG_FILTERS;
+
+  const srSel   = document.getElementById('flt-sr');
+  const dirSel  = document.getElementById('flt-dir');
+  const rmSel   = document.getElementById('flt-rm');
+  const mgrSel  = document.getElementById('flt-mgr');
+  const techSel = document.getElementById('flt-tech');
+  if (!srSel) return;
+
+  // Sr Director — all top-level keys
+  _setOpts(srSel, Object.keys(tree), 'All Sr Directors');
+
+  // Director — scoped to selected Sr
+  const srNodes = f.sr ? [tree[f.sr]||{}] : Object.values(tree);
+  const dirs = new Set(srNodes.flatMap(n => Object.keys(n)));
+  _setOpts(dirSel, dirs, 'All Directors');
+
+  // Regional Mgr — scoped to selected Sr+Dir
+  const rms = new Set();
+  srNodes.forEach(srNode => {
+    const dirNodes = f.dir ? [srNode[f.dir]||{}] : Object.values(srNode);
+    dirNodes.forEach(dirNode => Object.keys(dirNode||{}).forEach(r => rms.add(r)));
+  });
+  _setOpts(rmSel, rms, 'All Regional Mgrs');
+
+  // FS Manager — scoped to Sr+Dir+RM
+  const mgrs = new Set();
+  srNodes.forEach(srNode => {
+    const dirNodes = f.dir ? [srNode[f.dir]||{}] : Object.values(srNode);
+    dirNodes.forEach(dirNode => {
+      const rmNodes = f.rm ? [dirNode[f.rm]||{}] : Object.values(dirNode||{});
+      rmNodes.forEach(rmNode => Object.keys(rmNode||{}).forEach(m => mgrs.add(m)));
+    });
+  });
+  _setOpts(mgrSel, mgrs, 'All FS Managers');
+
+  // Technician — scoped to all levels
+  const techs = new Set();
+  srNodes.forEach(srNode => {
+    const dirNodes = f.dir ? [srNode[f.dir]||{}] : Object.values(srNode);
+    dirNodes.forEach(dirNode => {
+      const rmNodes = f.rm ? [dirNode[f.rm]||{}] : Object.values(dirNode||{});
+      rmNodes.forEach(rmNode => {
+        const mgrNodes = f.mgr ? [rmNode[f.mgr]||new Set()] : Object.values(rmNode||{});
+        mgrNodes.forEach(s => (s instanceof Set ? s : new Set()).forEach(t => techs.add(t)));
+      });
+    });
+  });
+  _setOpts(techSel, techs, 'All Technicians');
+
+  // Restore selections
+  if (srSel)   srSel.value   = f.sr;
+  if (dirSel)  dirSel.value  = f.dir;
+  if (rmSel)   rmSel.value   = f.rm;
+  if (mgrSel)  mgrSel.value  = f.mgr;
+  if (techSel) techSel.value = f.tech;
+
+  // Active filter badge
+  const count = Object.values(f).filter(Boolean).length;
+  const badge = document.getElementById('flt-active-count');
+  if (badge) {
+    badge.textContent = count || '';
+    badge.classList.toggle('hidden', !count);
+  }
+}
+
+// ── Public API ────────────────────────────────────────────────────────────
+function onOrgFilterChange(level) {
+  const el = document.getElementById('flt-' + level);
+  if (!el) return;
+  ORG_FILTERS[level] = el.value;
+  // Clear downstream levels
+  const LEVELS = ['sr','dir','rm','mgr','tech'];
+  const idx = LEVELS.indexOf(level);
+  LEVELS.slice(idx + 1).forEach(l => { ORG_FILTERS[l] = ''; });
+  _refreshCascade();
+  const fn = window['render_' + ACTIVE_TAB];
+  if (typeof fn === 'function') fn();
+}
+
+function clearOrgFilters() {
+  ORG_FILTERS.sr = '';
+  ORG_FILTERS.dir = '';
+  ORG_FILTERS.rm = '';
+  ORG_FILTERS.mgr = '';
+  ORG_FILTERS.tech = '';
+  _orgTree = null;
+  _refreshCascade();
+  const fn = window['render_' + ACTIVE_TAB];
+  if (typeof fn === 'function') fn();
+}
+
+/**
+ * filterByOrg(rows, fieldMap)
+ * Generic row filter using current ORG_FILTERS.
+ * fieldMap: { sr, dir, rm, mgr, tech } — values are the field names in each row.
+ * Omit a key if that level isn’t available in the dataset.
+ */
+function filterByOrg(rows, fieldMap) {
+  const f = ORG_FILTERS;
+  return rows.filter(r => {
+    if (f.sr   && fieldMap.sr   && (r[fieldMap.sr]   ||'').trim() !== f.sr)   return false;
+    if (f.dir  && fieldMap.dir  && (r[fieldMap.dir]  ||'').trim() !== f.dir)  return false;
+    if (f.rm   && fieldMap.rm   && (r[fieldMap.rm]   ||'').trim() !== f.rm)   return false;
+    if (f.mgr  && fieldMap.mgr  && (r[fieldMap.mgr]  ||'').trim() !== f.mgr)  return false;
+    if (f.tech && fieldMap.tech && (r[fieldMap.tech] ||'').trim() !== f.tech) return false;
+    return true;
+  });
+}
+
+/** Quick aggregate helper used by refrig + obs tabs when filtering */
+function reAgg(rows, keyFn, valFn) {
+  const m = {};
+  rows.forEach(r => {
+    const k = keyFn(r); if (!k) return;
+    if (!m[k]) m[k] = { events:0, lbs:0 };
+    m[k].events++;
+    m[k].lbs += valFn ? (valFn(r)||0) : 0;
+  });
+  return Object.entries(m)
+    .map(([k,v]) => ({ key:k, events:v.events, lbs:Math.round(v.lbs*10)/10 }))
+    .sort((a,b) => b.events - a.events);
+}
+
+// Hook into setTab to show/hide filter bar
+const _origSetTab = window.setTab;
+window.setTab = function(id) {
+  _origSetTab(id);
+  const bar = document.getElementById('org-filter-bar');
+  if (bar) bar.classList.toggle('hidden', !FILTER_TABS.has(id));
+  if (FILTER_TABS.has(id)) _refreshCascade();
+};
+</script>

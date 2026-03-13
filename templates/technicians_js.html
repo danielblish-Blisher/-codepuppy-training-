@@ -88,26 +88,20 @@ function _buildTechData() {
 
 function render_technicians() {
   _techData = null;
-  const techs   = _buildTechData();
-  const srFilt  = document.getElementById('tech-sr-filter')?.value||'';
+  const techs  = _buildTechData();
+  const f      = ORG_FILTERS;
   const lvlFilt = document.getElementById('tech-level-filter')?.value||'';
   const exFilt  = document.getElementById('tech-exam-filter')?.value||'';
 
-  // Populate filter options
-  const srs  = [...new Set(techs.map(t=>t.sr).filter(Boolean))].sort();
+  // Populate level/exam filters once
   const lvls = [...new Set(techs.map(t=>t.level).filter(Boolean))].sort();
-  const srSel = document.getElementById('tech-sr-filter');
-  if (srSel && srSel.options.length <= 1) {
-    srs.forEach(s => { const o=document.createElement('option'); o.value=s; o.textContent=s; srSel.appendChild(o); });
-  }
   const lvlSel = document.getElementById('tech-level-filter');
-  if (lvlSel && lvlSel.options.length <= 1) {
+  if (lvlSel && lvlSel.options.length <= 1)
     lvls.forEach(l => { const o=document.createElement('option'); o.value=l; o.textContent=l; lvlSel.appendChild(o); });
-  }
 
-  let filtered = techs
-    .filter(t => !srFilt  || t.sr===srFilt)
-    .filter(t => !lvlFilt || t.level===lvlFilt)
+  // Apply org slicer + tab-local filters
+  let filtered = filterByOrg(techs, { sr:'sr', dir:'dir', rm:'rm', mgr:'mgr', tech:'name' })
+    .filter(t => !lvlFilt || t.level === lvlFilt)
     .filter(t => {
       if (!exFilt) return true;
       if (exFilt==='pass') return (t.exam_result||'').toLowerCase().includes('pass');
@@ -115,8 +109,6 @@ function render_technicians() {
       if (exFilt==='none') return !t.exam_result;
       return true;
     });
-
-  // Banner filter via store type would need store lookup; skip for now
 
   _renderLevelChart(filtered);
   _renderExamTypeChart(filtered);
