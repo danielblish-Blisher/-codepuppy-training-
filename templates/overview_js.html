@@ -3,7 +3,7 @@
 // ── Training Gap Score Engine ───────────────────────────────────────────
 //
 // Score 0-100 per store (higher = more training needed)
-// Weights: FCR(40%) + SLA(20%) + Repeat WO(20%) + AvgTrips(10%) + EPA(10%)
+// Weights: FTF(40%) + SLA(20%) + Repeat WO(20%) + AvgTrips(10%) + EPA(10%)
 //
 
 let _storeScores = null;   // cached store-level scores
@@ -264,7 +264,7 @@ function _renderKpis(storeScores) {
   const scoreList = Object.values(storeScores).map(s=>s.score).filter(s=>s!=null);
   const avgScore  = scoreList.length ? scoreList.reduce((a,b)=>a+b,0)/scoreList.length : null;
 
-  // Global FCR/SLA from STORE_WO_METRICS
+  // Global FTF/SLA from STORE_WO_METRICS
   let totalFcrY=0, totalFcrN=0, totalSlaY=0, totalSlaW=0;
   (STORE_WO_METRICS||[]).forEach(m => {
     totalFcrY += m.fcr_y; totalFcrN += m.fcr_n;
@@ -291,7 +291,7 @@ function _renderKpis(storeScores) {
       info:  `<b>Training Gap Score (0–100)</b><br>
               Composite per-store score — higher means more training need.<br><br>
               <b>How it's built:</b><br>
-              · FCR failure rate &nbsp;&nbsp;&nbsp;&nbsp;<b>40%</b><br>
+              · FTF failure rate &nbsp;&nbsp;&nbsp;&nbsp;<b>40%</b><br>
               · SLA failure rate &nbsp;&nbsp;&nbsp;&nbsp;<b>20%</b><br>
               · Repeat WO rate &nbsp;&nbsp;&nbsp;&nbsp;<b>20%</b><br>
               · Excess trips (above 1) <b>10%</b><br>
@@ -300,11 +300,11 @@ function _renderKpis(storeScores) {
               Stores with no data for a factor are excluded from that weight.`,
     },
     {
-      label:'First-Call Fix',
+    { label:'First-Time Fix',
       val:   fcrRate!=null?pct(fcrRate*100):'—',
       sub:   'WOs (12mo)',
       color: fcrRate!=null&&fcrRate<0.7?'text-wmt-red':'text-green-700',
-      info:  `<b>First-Call Resolution %</b><br>
+      info:  `<b>First-Time Fix (FTF) %</b><br>
               % of work orders resolved on the <b>first technician visit</b>.<br><br>
               <b>Source:</b> <code>fsai_workorders</code><br>
               <b>Field:</b> <code>first_time_fix_compliance</code><br><br>
@@ -380,7 +380,7 @@ function render_overview() {
 function exportOverviewTable() {
   const storeScores = _computeStoreScores();
   const rows = Object.values(storeScores).sort((a,b)=>(b.score||0)-(a.score||0));
-  const header = 'Store,Sr Director,Director,RM,Gap Score,FCR %,SLA %,Repeat %,WOs\n';
+  const header = 'Store,Sr Director,Director,RM,Gap Score,FTF %,SLA %,Repeat %,WOs\n';
   const csv = header + rows.map(s => [
     s.sn, s.sr, s.dir, s.rm,
     s.score!=null?Math.round(s.score):'',

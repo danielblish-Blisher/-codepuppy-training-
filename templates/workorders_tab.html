@@ -5,11 +5,11 @@
     <!-- KPI row -->
     <div class="grid grid-cols-2 sm:grid-cols-4 gap-4" id="wo-kpis"></div>
 
-    <!-- Row: FCR by Problem Code + SLA by Sr Director -->
+    <!-- Row: FTF by Problem Code + SLA by Sr Director -->
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
       <div class="bg-white rounded-xl shadow p-4">
-        <h2 class="font-semibold text-sm mb-3">First-Call Resolution by Problem Code</h2>
-        <p class="text-xs text-wmt-gray100 mb-2">Lower FCR = higher training signal for that problem category</p>
+        <h2 class="font-semibold text-sm mb-3">First-Time Fix (FTF) by Problem Code</h2>
+        <p class="text-xs text-wmt-gray100 mb-2">Lower FTF = higher training signal for that problem category</p>
         <div style="height:300px;"><canvas id="chart-fcr-prob"></canvas></div>
       </div>
       <div class="bg-white rounded-xl shadow p-4">
@@ -46,7 +46,7 @@
               <th class="px-3 py-2 text-left">Sr Director</th>
               <th class="px-3 py-2 text-left">Director</th>
               <th class="px-3 py-2 text-right">Total WOs</th>
-              <th class="px-3 py-2 text-right">FCR %</th>
+              <th class="px-3 py-2 text-right">FTF %</th>
               <th class="px-3 py-2 text-right">SLA %</th>
               <th class="px-3 py-2 text-right">Avg Trips</th>
               <th class="px-3 py-2 text-right">Repeat WOs</th>
