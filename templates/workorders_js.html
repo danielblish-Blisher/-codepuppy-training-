@@ -52,7 +52,7 @@ function _renderWoKpis(stores) {
   const avgT   = tripArr.length? tripArr.reduce((a,b)=>a+b)/tripArr.length : null;
   const cards=[
     {label:'Total WOs',         val:fmt(total),                         sub:'last 12 months',     color:'text-wmt-blue'},
-    {label:'Avg FTF Rate',      val:avgFcr!=null?pct(avgFcr*100):'—',   sub:'first-time fix',     color:avgFcr!=null&&avgFcr<0.7?'text-wmt-red':'text-green-700'},
+    {label:'Avg FCR Rate',      val:avgFcr!=null?pct(avgFcr*100):'—',   sub:'first-call fix',     color:avgFcr!=null&&avgFcr<0.7?'text-wmt-red':'text-green-700'},
     {label:'Avg SLA Compliance',val:avgSla!=null?pct(avgSla*100):'—',   sub:'repair on time',     color:avgSla!=null&&avgSla<0.7?'text-wmt-red':'text-green-700'},
     {label:'Avg Trips / WO',    val:avgT!=null?avgT.toFixed(2):'—',     sub:'1.0 = ideal',        color:avgT!=null&&avgT>1.5?'text-wmt-red':'text-green-700'},
   ];
@@ -79,7 +79,7 @@ function _renderFcrByProbChart() {
   if(_woChartFcr) _woChartFcr.destroy();
   _woChartFcr=new Chart(ctx,{
     type:'bar',
-    data:{labels,datasets:[{label:'FTF %',data,backgroundColor:colors,borderRadius:3}]},
+    data:{labels,datasets:[{label:'FCR %',data,backgroundColor:colors,borderRadius:3}]},
     options:{
       responsive:true,maintainAspectRatio:false,indexAxis:'y',
       plugins:{legend:{display:false}},
@@ -167,7 +167,7 @@ function _renderWoTable(stores) {
 }
 
 function exportWoTable() {
-  const hdr='Store,Sr Director,Director,Total WOs,FTF %,SLA %,Avg Trips,Repeat WOs\n';
+  const hdr='Store,Sr Director,Director,Total WOs,FCR %,SLA %,Avg Trips,Repeat WOs\n';
   const csv=hdr+(STORE_WO_METRICS||[]).map(m=>[   
     m.store_nbr, m.sr_director, m.director, m.total_wos,
     (m.fcr_y+m.fcr_n)>0?((m.fcr_y/(m.fcr_y+m.fcr_n))*100).toFixed(1):'',
