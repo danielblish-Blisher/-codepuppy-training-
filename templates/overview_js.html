@@ -3,7 +3,7 @@
 // ── Training Gap Score Engine ───────────────────────────────────────────
 //
 // Score 0-100 per store (higher = more training needed)
-// Weights: FCR(40%) + SLA(20%) + Repeat WO(20%) + AvgTrips(10%)
+// Weights: FCR(40%) + SLA(20%) + Repeat WO(20%) + AvgTrips(10%) + EPA(10%)
 //
 
 let _storeScores = null;   // cached store-level scores
@@ -11,6 +11,22 @@ let _orgScores   = null;   // cached director-level rollup
 
 function _computeStoreScores() {
   if (_storeScores) return _storeScores;
+
+  // EPA compliance lookup by store (TECH_STORES + EPA_CERTS)
+  const today = new Date();
+  const epaValidIds = new Set();
+  (EPA_CERTS || []).forEach(c => {
+    if (c.expiry_date && new Date(c.expiry_date) > today)
+      epaValidIds.add(String(c.user_id||'').toLowerCase());
+  });
+  const storeEpaTotal = {}, storeEpaValid = {};
+  (TECH_STORES || []).forEach(ts => {
+    const sn = String(ts.store_nbr || '');
+    if (!sn) return;
+    storeEpaTotal[sn] = (storeEpaTotal[sn]||0) + 1;
+    if (epaValidIds.has(String(ts.user_id||'').toLowerCase()))
+      storeEpaValid[sn] = (storeEpaValid[sn]||0) + 1;
+  });
 
   // Use pre-aggregated STORE_WO_METRICS (no 298K row iteration!)
   _storeScores = {};
@@ -27,12 +43,17 @@ function _computeStoreScores() {
     const slaFailRate = slaDen > 0 ? m.sla_n / slaDen : null;
     const repeatRate  = m.total_wos > 0 ? m.repeat_wos / m.total_wos : null;
     const tripExcess  = m.avg_trips != null ? Math.min(Math.max(m.avg_trips-1,0)/2, 1) : null;
+    const epaTotal    = storeEpaTotal[sn] || 0;
+    const epaValid    = storeEpaValid[sn] || 0;
+    const epaMissRate = epaTotal > 0 ? 1 - epaValid/epaTotal : null;
+
     let score = null, totalW = 0;
     const add = (val, w) => { if (val==null) return; score=(score||0)+val*w; totalW+=w; };
     add(fcrFailRate,  0.40);
     add(slaFailRate,  0.20);
     add(repeatRate,   0.20);
     add(tripExcess,   0.10);
+    add(epaMissRate,  0.10);
     if (totalW > 0) score = (score/totalW)*100;
 
     _storeScores[sn] = {
@@ -43,7 +64,8 @@ function _computeStoreScores() {
       sla_y: m.sla_y, sla_n: m.sla_n,
       fcrRate:  fcrFailRate,   // failure rate (lower = better)
       slaRate:  slaFailRate,
-      repeatRate, avgTrips: m.avg_trips, score,
+      repeatRate, avgTrips: m.avg_trips, epaMissRate,
+      epaTotal, epaValid, score,
     };
   });
   return _storeScores;
@@ -62,13 +84,15 @@ function _computeOrgScoresFromList(storeList) {
     const key = `${s.sr}||${s.dir}`;
     if (!dirs[key]) dirs[key] = {
       sr: s.sr, dir: s.dir,
-      scores:[], fcr:[], sla:[], repeat:[], wo:0
+      scores:[], fcr:[], sla:[], repeat:[], epaT:0, epaV:0, wo:0
     };
     const d = dirs[key];
     if (s.score != null) d.scores.push(s.score);
     if (s.fcrRate != null) d.fcr.push(s.fcrRate);
     if (s.slaRate != null) d.sla.push(s.slaRate);
     if (s.repeatRate != null) d.repeat.push(s.repeatRate);
+    d.epaT += s.epaTotal;
+    d.epaV += s.epaValid;
     d.wo   += s.wo_total;
   });
   const avg = arr => arr.length ? arr.reduce((a,b)=>a+b,0)/arr.length : null;
@@ -78,6 +102,7 @@ function _computeOrgScoresFromList(storeList) {
     fcrRate: avg(d.fcr),
     slaRate: avg(d.sla),
     repeatRate: avg(d.repeat),
+    epaPct: d.epaT > 0 ? d.epaV/d.epaT : null,
     storeCount: d.scores.length,
   })).sort((a,b) => (b.score||0)-(a.score||0));
 }
@@ -246,6 +271,7 @@ function _renderDirectorTable(orgScores) {
       <td class="px-3 py-2 text-right ${d.slaRate>0.3?'text-wmt-red font-semibold':''}">${
         d.slaRate!=null?pct((1-d.slaRate)*100):'—'}</td>
       <td class="px-3 py-2 text-right">${d.repeatRate!=null?pct(d.repeatRate*100):'—'}</td>
+      <td class="px-3 py-2 text-right">${d.epaPct!=null?pct(d.epaPct*100):'—'}</td>
       <td class="px-3 py-2 text-right">—</td>
       <td class="px-3 py-2 text-right">${fmt(d.wo)}</td>
     </tr>`).join('');
@@ -278,6 +304,11 @@ function _renderKpis(filteredStores) {
     return true;
   }).length;
 
+  const today   = new Date();
+  const epaTot  = (EPA_CERTS||[]).length;
+  const epaValid = (EPA_CERTS||[]).filter(c=>c.expiry_date&&new Date(c.expiry_date)>today).length;
+  const epaPct  = epaTot ? epaValid/epaTot : null;
+
   const cards = [
     { label:'Active Techs',   val: fmt(techTotal),  sub:'in alignment',     color:'text-wmt-blue' },
     {
@@ -292,7 +323,7 @@ function _renderKpis(filteredStores) {
               · SLA failure rate &nbsp;&nbsp;&nbsp;&nbsp;<b>20%</b><br>
               · Repeat WO rate &nbsp;&nbsp;&nbsp;&nbsp;<b>20%</b><br>
               · Excess trips (above 1) <b>10%</b><br>
-
+              · EPA non-compliance &nbsp;<b>10%</b><br><br>
               Each factor is 0–1, weighted, averaged, then × 100.
               Stores with no data for a factor are excluded from that weight.`,
     },
@@ -312,7 +343,8 @@ function _renderKpis(filteredStores) {
     },
     { label:'SLA Compliance', val: slaRate!=null?pct(slaRate*100):'—', sub:'repair on time',
       color: slaRate!=null&&slaRate<0.7?'text-wmt-red':'text-green-700' },
-
+    { label:'EPA Cert Valid', val: epaPct!=null?pct(epaPct*100):'—', sub:`${fmt(epaValid)} of ${fmt(epaTot)}`,
+      color: epaTot>0&&epaPct<0.9?'text-wmt-red':'text-green-700' },
   ];
   document.getElementById('overview-kpis').innerHTML = cards.map(c=>{
     const iconHtml = c.info ? `
@@ -344,7 +376,7 @@ function _renderInsight(filteredStores, orgScores) {
     <strong>${fmt(highNeed)}</strong> stores have a High Training Need score (≥70).
     ${topSr ? `Sr Director <strong>${topSr.sr}</strong> has the highest average gap score
     (<strong>${Math.round(topSr.score||0)}</strong>) across their ${topSr.storeCount} stores.`:''}
-    Use the filters above to drill into specific regions, technicians,
+    Use the filters above to drill into specific regions, technicians, EPA certifications,
     field observations, and Top Gun outcomes.`;
 }
 

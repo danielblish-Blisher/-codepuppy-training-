@@ -101,5 +101,20 @@
     </select>
   </div>
 
+  <!-- EPA: Cert Status -->
+  <div id="tabflt-epa" class="hidden max-w-screen-2xl mx-auto px-4 pb-2
+       flex flex-wrap items-center gap-2 border-t border-gray-200 pt-1.5">
+    <span class="text-xs font-semibold text-wmt-gray100 shrink-0 mr-1">Filter:</span>
+
+    <select id="epa-status-filter" onchange="render_epa()"
+            class="flt-select text-xs rounded border border-gray-300 px-2 py-1
+                   bg-white text-wmt-gray160 focus:border-wmt-blue focus:outline-none
+                   min-w-[140px]">
+      <option value="">All Statuses</option>
+      <option value="valid">Valid</option>
+      <option value="expired">Expired</option>
+      <option value="expiring">Expiring (90d)</option>
+    </select>
+  </div>
 
 </div>

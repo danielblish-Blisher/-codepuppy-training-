@@ -7,6 +7,25 @@ let _examTypeChart  = null;
 function _buildTechData() {
   if (_techData) return _techData;
 
+  // ── EPA validity lookup (by user_id, lowercased)
+  const today = new Date();
+  const epaByUid = {};  // uid -> { valid, expiry }
+  (EPA_CERTS||[]).forEach(c => {
+    const uid = String(c.user_id||'').toLowerCase().trim();
+    if (!uid) return;
+    const exp = c.expiry_date ? new Date(c.expiry_date) : null;
+    const valid = exp && exp > today;
+    if (!epaByUid[uid] || valid) epaByUid[uid] = { valid, expiry: c.expiry_date };
+  });
+  const epaByName = {};
+  (EPA_CERTS||[]).forEach(c => {
+    const name = (c.full_name||'').toLowerCase().trim();
+    if (!name) return;
+    const exp = c.expiry_date ? new Date(c.expiry_date) : null;
+    const valid = exp && exp > today;
+    if (!epaByName[name] || valid) epaByName[name] = { valid, expiry: c.expiry_date };
+  });
+
   // ── Org hierarchy from TECH_STORES (user_id -> { sr, dir, rm })
   const orgByUid = {};
   (TECH_STORES||[]).forEach(ts => {
@@ -45,6 +64,9 @@ function _buildTechData() {
     // Join exam
     const exam = examByStudentId[uid] || examByName[name] || null;
 
+    // EPA
+    const epa = epaByUid[uid] || epaByName[name] || null;
+
     return {
       uid, name: `${t.first_name} ${t.last_name}`,
       level: t.technician_level||'',
@@ -57,6 +79,8 @@ function _buildTechData() {
       exam_result: exam?.Result||null,
       exam_type:   exam?.test_type||null,
       exam_attempts: exam?.attempt||null,
+      epa_valid:   epa?.valid ?? null,
+      epa_expiry:  epa?.expiry||null,
     };
   });
   return _techData;
@@ -98,10 +122,12 @@ function _renderTechKpis(all, filtered) {
   const hasPassed = filtered.filter(t=>(t.exam_result||'').toLowerCase().includes('pass')).length;
   const hasFailed = filtered.filter(t=>(t.exam_result||'').toLowerCase().includes('fail')).length;
   const noExam  = filtered.filter(t=>!t.exam_result).length;
+  const epaOk   = filtered.filter(t=>t.epa_valid===true).length;
   const cards = [
-    { label:'Total Active Techs',    val:fmt(total),             sub:'in filter',                                      color:'text-wmt-blue' },
-    { label:'Exam Pass',             val:fmt(hasPassed),         sub:pct(total?hasPassed/total*100:0),                 color:'text-green-700' },
-    { label:'Exam Fail / No Exam',   val:fmt(hasFailed+noExam),  sub:`${fmt(hasFailed)} fail · ${fmt(noExam)} no record`, color:(hasFailed+noExam)>0?'text-wmt-red':'text-green-700' },
+    { label:'Total Active Techs', val:fmt(total),    sub:'in filter', color:'text-wmt-blue' },
+    { label:'Exam Pass',          val:fmt(hasPassed), sub:pct(total?hasPassed/total*100:0), color:'text-green-700' },
+    { label:'Exam Fail / No Exam',val:fmt(hasFailed+noExam), sub:`${fmt(hasFailed)} fail · ${fmt(noExam)} no record`, color:(hasFailed+noExam)>0?'text-wmt-red':'text-green-700' },
+    { label:'EPA Cert Valid',     val:fmt(epaOk),     sub:pct(total?epaOk/total*100:0), color:epaOk/total<0.9?'text-wmt-red':'text-green-700' },
   ];
   document.getElementById('tech-kpis').innerHTML = cards.map(c=>`
     <div class="kpi-card bg-white rounded-xl shadow p-4">
@@ -186,6 +212,11 @@ function _renderTechTable(techs) {
       : res.includes('fail')
       ? `<span class="score-high rounded px-2 py-0.5 font-bold">FAIL</span>`
       : `<span class="score-none rounded px-2 py-0.5">None</span>`;
+    const epaHtml = t.epa_valid===true
+      ? `<span class="score-low rounded px-2 py-0.5">✓ Valid</span>`
+      : t.epa_valid===false
+      ? `<span class="score-high rounded px-2 py-0.5">⚠ Exp</span>`
+      : `<span class="score-none rounded px-2 py-0.5">—</span>`;
     return `<tr class="hover:bg-wmt-gray10 ${i%2===0?'':'bg-gray-50/50'}">
       <td class="px-3 py-2 font-medium">${t.name}</td>
       <td class="px-3 py-2">${t.level||'—'}</td>
@@ -196,6 +227,7 @@ function _renderTechTable(techs) {
       <td class="px-3 py-2 text-right">${t.exam_score!=null?t.exam_score:'—'}</td>
       <td class="px-3 py-2 text-right">${resHtml}</td>
       <td class="px-3 py-2 text-right">${t.exam_attempts||'—'}</td>
+      <td class="px-3 py-2 text-right">${epaHtml}</td>
     </tr>`;
   }).join('');
 }
@@ -223,10 +255,11 @@ function _renderHighRisk(techs) {
 
 function exportTechTable() {
   const techs = _buildTechData();
-  const hdr = 'Name,Level,Role,Home Store,Sr Director,Director,Exam Date,Score,Result,Attempts\n';
+  const hdr = 'Name,Level,Role,Home Store,Sr Director,Director,Exam Date,Score,Result,Attempts,EPA Valid\n';
   const csv = hdr + techs.map(t=>[
     t.name, t.level, t.role, t.home_store, t.sr, t.dir,
-    t.exam_date||'', t.exam_score||'', t.exam_result||'', t.exam_attempts||''
+    t.exam_date||'', t.exam_score||'', t.exam_result||'', t.exam_attempts||'',
+    t.epa_valid!=null?t.epa_valid:''
   ].join(',')).join('\n');
   const a=document.createElement('a');
   a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv);

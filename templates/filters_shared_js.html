@@ -4,7 +4,7 @@
 // ── Global filter state ──────────────────────────────────────────────────
 window.ORG_FILTERS = { sr:'', dir:'', rm:'', mgr:'', tech:'' };
 
-const FILTER_TABS = new Set(['overview','technicians','workorders','observations','refrigerant','topgun']);
+const FILTER_TABS = new Set(['overview','technicians','workorders','observations','refrigerant','epa','topgun']);
 
 // Lazy-built org tree: sr → dir → rm → mgr → Set<tech_name>
 let _orgTree = null;
@@ -135,7 +135,7 @@ function clearAllFilters() {
   ORG_FILTERS.tech = '';
   _orgTree = null;
   // Also reset tab-specific selects
-  ['tech-level-filter','tech-exam-filter','obs-group-filter'].forEach(id => {
+  ['tech-level-filter','tech-exam-filter','obs-group-filter','epa-status-filter'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.value = '';
   });
@@ -177,7 +177,7 @@ function reAgg(rows, keyFn, valFn) {
 }
 
 // Tabs that have a tab-specific second row in the filter bar
-const TAB_FILTER_STRIPS = new Set(['technicians','observations']);
+const TAB_FILTER_STRIPS = new Set(['technicians','observations','epa']);
 
 // Hook into setTab to show/hide filter bar + tab-specific strips
 const _origSetTab = window.setTab;

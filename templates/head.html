@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Training Dashboard</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- Chart.js inlined at build time by build_dashboard.py -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <script>
     tailwind.config = {
       theme: {
@@ -95,22 +95,6 @@
 
 <!-- Global state -->
 <script>
-  // ── Visible error trap (remove before final publish) ──────────────────
-  window.addEventListener('error', e => {
-    let box = document.getElementById('_err_box');
-    if (!box) {
-      box = document.createElement('div');
-      box.id = '_err_box';
-      box.style.cssText = 'position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#ea1100;color:#fff;font:12px/1.4 monospace;padding:8px 12px;max-height:35vh;overflow:auto;';
-      document.body.appendChild(box);
-    }
-    box.innerHTML += `<div>❌ ${e.message} @ ${e.filename?.split('/').pop()}:${e.lineno}</div>`;
-  });
-  window.addEventListener('unhandledrejection', e => {
-    let box = document.getElementById('_err_box');
-    if (!box) { box = document.createElement('div'); box.id='_err_box'; box.style.cssText='position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#ea1100;color:#fff;font:12px/1.4 monospace;padding:8px 12px;max-height:35vh;overflow:auto;'; document.body.appendChild(box); }
-    box.innerHTML += `<div>❌ Unhandled: ${e.reason}</div>`;
-  });
   // Banner filter: 'all' | 'walmart' | 'sams'
   let BANNER_FILTER = 'all';
   // Active tab
@@ -118,15 +102,13 @@
 
   function setTab(id) {
     ACTIVE_TAB = id;
-    // Style tab buttons
     document.querySelectorAll('.tab-btn').forEach(b => {
       b.classList.toggle('active', b.dataset.tab === id);
     });
-    // Show/hide panels via inline style (bypasses any CSS specificity wars)
     document.querySelectorAll('.tab-panel').forEach(p => {
-      p.style.display = (p.id === 'tab-' + id) ? 'block' : 'none';
+      p.classList.toggle('active', p.id === 'tab-' + id);
     });
-    // Call render function directly (no rAF delay)
+    // Notify each tab's render function if present
     const fn = window['render_' + id];
     if (typeof fn === 'function') fn();
   }

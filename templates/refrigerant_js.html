@@ -4,9 +4,6 @@
 let _rChartType=null, _rChartReason=null, _rChartTrend=null, _rChartSr=null;
 
 function render_refrigerant() {
-  // DEBUG: confirm function fires
-  const _dbg = document.getElementById('refrig-debug');
-  if (_dbg) _dbg.textContent = 'render called ✓ | REFRIG_RECENT rows: ' + (REFRIG_RECENT||[]).length + ' | ORG_FILTERS defined: ' + (typeof ORG_FILTERS !== 'undefined');
   const base = filterByOrg(REFRIG_RECENT||[], {
     sr:  'fm_sr_director',
     dir: 'fm_director',
@@ -18,7 +15,7 @@ function render_refrigerant() {
   _renderTypeChart(base, isFiltered);
   _renderReasonChart(base, isFiltered);
   _renderTrendChart(isFiltered);
-  _renderRefrigSrChart(isFiltered);
+  _renderSrChart(isFiltered);
   _renderRefrigTable(base);
 }
 
@@ -162,7 +159,7 @@ function _renderTrendChart(isFiltered) {
   });
 }
 
-function _renderRefrigSrChart(isFiltered) {
+function _renderSrChart(isFiltered) {
   const data = isFiltered ? [] : (REFRIG_BY_SR||[]).slice(0,15);  // Sr chart uses global data only
   const ctx  = document.getElementById('chart-refrig-sr')?.getContext('2d');
   if (!ctx) return;
@@ -218,7 +215,4 @@ function exportRefrigTable() {
   a.download = 'refrigerant_activity.csv';
   a.click();
 }
-
-// Explicitly register on window (Safari scoping safety)
-window.render_refrigerant = render_refrigerant;
 </script>
