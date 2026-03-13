@@ -460,11 +460,23 @@ TEMPLATE_ORDER = [
     "footer.html",
 ]
 
+# ── Inline Chart.js (no CDN dependency on corporate network) ────────────
+chartjs_path = Path("static") / "chart.umd.min.js"
+if chartjs_path.exists():
+    chartjs_inline = f"<script>\n{chartjs_path.read_text()}\n</script>"
+else:
+    print("  ⚠️  static/chart.umd.min.js not found – charts will be blank!")
+    chartjs_inline = ""
+
 print("  Stitching templates…")
 parts = []
 for name in TEMPLATE_ORDER:
     if name == "head.html":
-        parts.append(tpl(name))
+        head_html = tpl(name).replace(
+            "<!-- Chart.js inlined at build time by build_dashboard.py -->",
+            chartjs_inline,
+        )
+        parts.append(head_html)
         parts.append(data_block)  # inject data right after <head>
     else:
         parts.append(tpl(name))
