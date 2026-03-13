@@ -25,16 +25,7 @@
     <div class="bg-white rounded-xl shadow overflow-hidden">
       <div class="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
         <h2 class="font-semibold text-sm">EPA Certification Registry</h2>
-        <div class="flex gap-2">
-          <select id="epa-status-filter" onchange="render_epa()"
-                  class="text-xs border rounded px-2 py-1">
-            <option value="">All Statuses</option>
-            <option value="valid">Valid</option>
-            <option value="expired">Expired</option>
-            <option value="expiring">Expiring (90d)</option>
-          </select>
-          <button onclick="exportEpaTable()" class="text-xs bg-wmt-blue text-white rounded px-2 py-1">↓ CSV</button>
-        </div>
+        <button onclick="exportEpaTable()" class="text-xs bg-wmt-blue text-white rounded px-2 py-1">↓ CSV</button>
       </div>
       <div class="overflow-auto max-h-[500px]">
         <table class="w-full text-xs sticky-head">

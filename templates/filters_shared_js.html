@@ -4,7 +4,7 @@
 // ── Global filter state ──────────────────────────────────────────────────
 window.ORG_FILTERS = { sr:'', dir:'', rm:'', mgr:'', tech:'' };
 
-const FILTER_TABS = new Set(['overview','technicians','workorders','observations','refrigerant']);
+const FILTER_TABS = new Set(['overview','technicians','workorders','observations','refrigerant','epa']);
 
 // Lazy-built org tree: sr → dir → rm → mgr → Set<tech_name>
 let _orgTree = null;
@@ -127,13 +127,18 @@ function onOrgFilterChange(level) {
   if (typeof fn === 'function') fn();
 }
 
-function clearOrgFilters() {
+function clearAllFilters() {
   ORG_FILTERS.sr = '';
   ORG_FILTERS.dir = '';
   ORG_FILTERS.rm = '';
   ORG_FILTERS.mgr = '';
   ORG_FILTERS.tech = '';
   _orgTree = null;
+  // Also reset tab-specific selects
+  ['tech-level-filter','tech-exam-filter','obs-group-filter','epa-status-filter'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
   _refreshCascade();
   const fn = window['render_' + ACTIVE_TAB];
   if (typeof fn === 'function') fn();
@@ -171,12 +176,20 @@ function reAgg(rows, keyFn, valFn) {
     .sort((a,b) => b.events - a.events);
 }
 
-// Hook into setTab to show/hide filter bar
+// Tabs that have a tab-specific second row in the filter bar
+const TAB_FILTER_STRIPS = new Set(['technicians','observations','epa']);
+
+// Hook into setTab to show/hide filter bar + tab-specific strips
 const _origSetTab = window.setTab;
 window.setTab = function(id) {
   _origSetTab(id);
   const bar = document.getElementById('org-filter-bar');
   if (bar) bar.classList.toggle('hidden', !FILTER_TABS.has(id));
+  // Show/hide tab-specific second rows
+  TAB_FILTER_STRIPS.forEach(tab => {
+    const strip = document.getElementById('tabflt-' + tab);
+    if (strip) strip.classList.toggle('hidden', tab !== id);
+  });
   if (FILTER_TABS.has(id)) _refreshCascade();
 };
 </script>

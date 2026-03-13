@@ -1,74 +1,120 @@
-<!-- ====== ORG FILTER BAR (shared slicer for Technicians / WO / Observations / Refrigerant) ====== -->
+<!-- ====== ORG FILTER BAR (shared slicer for all data tabs) ====== -->
 <div id="org-filter-bar" class="hidden bg-gray-50 border-b border-gray-200 shadow-sm">
-  <div class="max-w-screen-2xl mx-auto px-4 py-2 flex flex-wrap items-center gap-2">
 
-    <!-- Label -->
-    <span class="text-xs font-semibold text-wmt-gray100 shrink-0 mr-1">Filter:</span>
+  <!-- Row 1: Org Hierarchy (always shown for all filter tabs) -->
+  <div class="max-w-screen-2xl mx-auto px-4 pt-2 pb-1 flex flex-wrap items-center gap-2">
 
-    <!-- Sr Director -->
-    <select id="flt-sr"
-            onchange="onOrgFilterChange('sr')"
+    <span class="text-xs font-semibold text-wmt-gray100 shrink-0 mr-1">Org:</span>
+
+    <select id="flt-sr" onchange="onOrgFilterChange('sr')"
             class="flt-select text-xs rounded border border-gray-300 px-2 py-1
                    bg-white text-wmt-gray160 focus:border-wmt-blue focus:outline-none
                    min-w-[140px] max-w-[180px]">
       <option value="">All Sr Directors</option>
     </select>
 
-    <span class="text-gray-300 text-xs">›</span>
+    <span class="text-gray-300 text-xs">&rsaquo;</span>
 
-    <!-- Director -->
-    <select id="flt-dir"
-            onchange="onOrgFilterChange('dir')"
+    <select id="flt-dir" onchange="onOrgFilterChange('dir')"
             class="flt-select text-xs rounded border border-gray-300 px-2 py-1
                    bg-white text-wmt-gray160 focus:border-wmt-blue focus:outline-none
                    min-w-[130px] max-w-[170px]">
       <option value="">All Directors</option>
     </select>
 
-    <span class="text-gray-300 text-xs">›</span>
+    <span class="text-gray-300 text-xs">&rsaquo;</span>
 
-    <!-- Regional Mgr -->
-    <select id="flt-rm"
-            onchange="onOrgFilterChange('rm')"
+    <select id="flt-rm" onchange="onOrgFilterChange('rm')"
             class="flt-select text-xs rounded border border-gray-300 px-2 py-1
                    bg-white text-wmt-gray160 focus:border-wmt-blue focus:outline-none
                    min-w-[130px] max-w-[170px]">
       <option value="">All Regional Mgrs</option>
     </select>
 
-    <span class="text-gray-300 text-xs">›</span>
+    <span class="text-gray-300 text-xs">&rsaquo;</span>
 
-    <!-- FS Manager -->
-    <select id="flt-mgr"
-            onchange="onOrgFilterChange('mgr')"
+    <select id="flt-mgr" onchange="onOrgFilterChange('mgr')"
             class="flt-select text-xs rounded border border-gray-300 px-2 py-1
                    bg-white text-wmt-gray160 focus:border-wmt-blue focus:outline-none
                    min-w-[130px] max-w-[170px]">
       <option value="">All FS Managers</option>
     </select>
 
-    <span class="text-gray-300 text-xs">›</span>
+    <span class="text-gray-300 text-xs">&rsaquo;</span>
 
-    <!-- Technician -->
-    <select id="flt-tech"
-            onchange="onOrgFilterChange('tech')"
+    <select id="flt-tech" onchange="onOrgFilterChange('tech')"
             class="flt-select text-xs rounded border border-gray-300 px-2 py-1
                    bg-white text-wmt-gray160 focus:border-wmt-blue focus:outline-none
                    min-w-[130px] max-w-[170px]">
       <option value="">All Technicians</option>
     </select>
 
-    <!-- Active count badge + Clear -->
+    <!-- Active badge -->
     <span id="flt-active-count"
           class="hidden text-xs font-bold bg-wmt-blue text-white rounded-full
                  w-5 h-5 flex items-center justify-center shrink-0">
     </span>
 
-    <button onclick="clearOrgFilters()"
+    <!-- Clear All -->
+    <button onclick="clearAllFilters()"
             class="text-xs px-3 py-1 rounded bg-wmt-spark text-wmt-gray160
                    font-semibold hover:bg-yellow-400 transition-colors shrink-0 ml-auto">
       Clear All
     </button>
-
   </div>
+
+  <!-- Row 2: Tab-specific slicers (one strip per tab, hidden until active) -->
+
+  <!-- Technicians: Level + Exam Result -->
+  <div id="tabflt-technicians" class="hidden max-w-screen-2xl mx-auto px-4 pb-2
+       flex flex-wrap items-center gap-2 border-t border-gray-200 pt-1.5">
+    <span class="text-xs font-semibold text-wmt-gray100 shrink-0 mr-1">Filter:</span>
+
+    <select id="tech-level-filter" onchange="render_technicians()"
+            class="flt-select text-xs rounded border border-gray-300 px-2 py-1
+                   bg-white text-wmt-gray160 focus:border-wmt-blue focus:outline-none
+                   min-w-[120px]">
+      <option value="">All Tech Levels</option>
+    </select>
+
+    <select id="tech-exam-filter" onchange="render_technicians()"
+            class="flt-select text-xs rounded border border-gray-300 px-2 py-1
+                   bg-white text-wmt-gray160 focus:border-wmt-blue focus:outline-none
+                   min-w-[130px]">
+      <option value="">All Exam Results</option>
+      <option value="pass">Pass</option>
+      <option value="fail">Fail</option>
+      <option value="none">No Exam on File</option>
+    </select>
+  </div>
+
+  <!-- Observations: Question Group -->
+  <div id="tabflt-observations" class="hidden max-w-screen-2xl mx-auto px-4 pb-2
+       flex flex-wrap items-center gap-2 border-t border-gray-200 pt-1.5">
+    <span class="text-xs font-semibold text-wmt-gray100 shrink-0 mr-1">Filter:</span>
+
+    <select id="obs-group-filter" onchange="render_observations()"
+            class="flt-select text-xs rounded border border-gray-300 px-2 py-1
+                   bg-white text-wmt-gray160 focus:border-wmt-blue focus:outline-none
+                   min-w-[180px]">
+      <option value="">All Question Groups</option>
+    </select>
+  </div>
+
+  <!-- EPA: Cert Status -->
+  <div id="tabflt-epa" class="hidden max-w-screen-2xl mx-auto px-4 pb-2
+       flex flex-wrap items-center gap-2 border-t border-gray-200 pt-1.5">
+    <span class="text-xs font-semibold text-wmt-gray100 shrink-0 mr-1">Filter:</span>
+
+    <select id="epa-status-filter" onchange="render_epa()"
+            class="flt-select text-xs rounded border border-gray-300 px-2 py-1
+                   bg-white text-wmt-gray160 focus:border-wmt-blue focus:outline-none
+                   min-w-[140px]">
+      <option value="">All Statuses</option>
+      <option value="valid">Valid</option>
+      <option value="expired">Expired</option>
+      <option value="expiring">Expiring (90d)</option>
+    </select>
+  </div>
+
 </div>

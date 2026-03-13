@@ -17,35 +17,11 @@
       </div>
     </div>
 
-    <!-- Tab-specific filters (Level + Exam) -->
-    <div class="bg-white rounded-xl shadow p-4">
-      <div class="flex flex-wrap gap-3 items-end">
-        <div>
-          <label class="text-xs text-wmt-gray100 block mb-1">Tech Level</label>
-          <select id="tech-level-filter" onchange="render_technicians()"
-                  class="text-xs border rounded px-2 py-1.5">
-            <option value="">All Levels</option>
-          </select>
-        </div>
-        <div>
-          <label class="text-xs text-wmt-gray100 block mb-1">Exam Result</label>
-          <select id="tech-exam-filter" onchange="render_technicians()"
-                  class="text-xs border rounded px-2 py-1.5">
-            <option value="">All</option>
-            <option value="pass">Pass</option>
-            <option value="fail">Fail</option>
-            <option value="none">No Exam on File</option>
-          </select>
-        </div>
-        <button onclick="exportTechTable()"
-                class="text-xs bg-wmt-blue text-white rounded px-3 py-1.5 ml-auto">↓ CSV</button>
-      </div>
-    </div>
-
     <!-- Tech roster table -->
     <div class="bg-white rounded-xl shadow overflow-hidden">
       <div class="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
-        <h2 class="font-semibold text-sm">Technician Roster & Training Status</h2>
+        <h2 class="font-semibold text-sm">Technician Roster &amp; Training Status</h2>
+        <button onclick="exportTechTable()" class="text-xs bg-wmt-blue text-white rounded px-2 py-1">↓ CSV</button>
         <span class="text-xs text-wmt-gray100" id="tech-count-label"></span>
       </div>
       <div class="overflow-auto max-h-[500px]">
