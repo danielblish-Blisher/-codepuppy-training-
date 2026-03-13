@@ -11,17 +11,17 @@ function onGlobalSearch(q) {
   if (!q || q.length < 2) return;
   q = q.toLowerCase();
   // Search store in WO data -> jump to WO tab + filter
-  const matchStore = (TRAINING_WOS||[]).find(w => String(w.store_nbr||'').includes(q));
+  const matchStore = (STORE_WO_METRICS||[]).find(w => String(w.store_nbr||'').includes(q));
   if (matchStore) { setTab('workorders'); return; }
   // Search tech name -> jump to technicians tab
   const matchTech = (TECH_ALIGNMENT||[]).find(t =>
     (`${t.first_name} ${t.last_name}`).toLowerCase().includes(q));
   if (matchTech) { setTab('technicians'); return; }
-  // Search org name -> jump to overview
-  const matchOrg = (TECH_STORES||[]).find(ts =>
-    (ts.sr_director||'').toLowerCase().includes(q) ||
-    (ts.director||'').toLowerCase().includes(q) ||
-    (ts.rm||'').toLowerCase().includes(q));
+  // Search org name -> jump to overview (use STORE_WO_METRICS which has org fields)
+  const matchOrg = (STORE_WO_METRICS||[]).find(m =>
+    (m.sr_director||'').toLowerCase().includes(q) ||
+    (m.director||'').toLowerCase().includes(q) ||
+    (m.rm||'').toLowerCase().includes(q));
   if (matchOrg) { setTab('overview'); return; }
 }
 
