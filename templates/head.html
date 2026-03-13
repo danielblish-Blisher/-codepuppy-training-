@@ -50,6 +50,41 @@
     .kpi-card { transition: transform .15s, box-shadow .15s; }
     .kpi-card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,.1); }
 
+    /* Info icon + tooltip */
+    .info-wrap { position: relative; display: inline-flex; align-items: center; }
+    .info-icon {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 15px; height: 15px; border-radius: 50%;
+      background: #0053e2; color: #fff;
+      font-size: 9px; font-weight: 800; line-height: 1;
+      cursor: pointer; margin-left: 5px; flex-shrink: 0;
+      border: none; padding: 0; vertical-align: middle;
+    }
+    .info-icon:hover { background: #003da8; }
+    .info-tip {
+      display: none;
+      position: absolute; bottom: calc(100% + 8px); left: 50%;
+      transform: translateX(-50%);
+      width: 260px;
+      background: #1e293b; color: #f1f5f9;
+      font-size: 11px; line-height: 1.55;
+      border-radius: 8px; padding: 10px 12px;
+      box-shadow: 0 8px 24px rgba(0,0,0,.3);
+      z-index: 9999; pointer-events: none;
+      white-space: normal; text-align: left;
+    }
+    /* caret */
+    .info-tip::after {
+      content: '';
+      position: absolute; top: 100%; left: 50%;
+      transform: translateX(-50%);
+      border: 6px solid transparent;
+      border-top-color: #1e293b;
+    }
+    .info-wrap:hover .info-tip,
+    .info-icon:focus + .info-tip { display: block; }
+    .info-tip b { color: #ffc220; }
+
     /* Sticky table headers */
     .sticky-head th { position: sticky; top: 0; z-index: 10; }
 

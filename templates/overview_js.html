@@ -283,21 +283,56 @@ function _renderKpis(storeScores) {
 
   const cards = [
     { label:'Active Techs',   val: fmt(techTotal),  sub:'in alignment',     color:'text-wmt-blue' },
-    { label:'Avg Gap Score',  val: avgScore!=null?Math.round(avgScore)+'':'—', sub:'0=none · 100=critical',
-      color: avgScore>=70?'text-wmt-red':avgScore>=40?'text-yellow-600':'text-green-700' },
-    { label:'First-Call Fix', val: fcrRate!=null?pct(fcrRate*100):'—', sub:'WOs (12mo)',
-      color: fcrRate!=null&&fcrRate<0.7?'text-wmt-red':'text-green-700' },
+    {
+      label:'Avg Gap Score',
+      val:   avgScore!=null?Math.round(avgScore)+'':'—',
+      sub:   '0=none · 100=critical',
+      color: avgScore>=70?'text-wmt-red':avgScore>=40?'text-yellow-600':'text-green-700',
+      info:  `<b>Training Gap Score (0–100)</b><br>
+              Composite per-store score — higher means more training need.<br><br>
+              <b>How it's built:</b><br>
+              · FCR failure rate &nbsp;&nbsp;&nbsp;&nbsp;<b>40%</b><br>
+              · SLA failure rate &nbsp;&nbsp;&nbsp;&nbsp;<b>20%</b><br>
+              · Repeat WO rate &nbsp;&nbsp;&nbsp;&nbsp;<b>20%</b><br>
+              · Excess trips (above 1) <b>10%</b><br>
+              · EPA non-compliance &nbsp;<b>10%</b><br><br>
+              Each factor is 0–1, weighted, averaged, then × 100.
+              Stores with no data for a factor are excluded from that weight.`,
+    },
+    {
+      label:'First-Call Fix',
+      val:   fcrRate!=null?pct(fcrRate*100):'—',
+      sub:   'WOs (12mo)',
+      color: fcrRate!=null&&fcrRate<0.7?'text-wmt-red':'text-green-700',
+      info:  `<b>First-Call Resolution %</b><br>
+              % of work orders resolved on the <b>first technician visit</b>.<br><br>
+              <b>Source:</b> <code>fsai_workorders</code><br>
+              <b>Field:</b> <code>first_time_fix_compliance</code><br><br>
+              <b>Counted as Pass:</b> "Yes First Time Fix"<br>
+              <b>Counted as Fail:</b> "No First Time Fix"<br>
+              <b>Excluded:</b> "Missing Time" records<br><br>
+              🟢 ≥ 70%  🟡 60–69%  🔴 &lt; 60%`,
+    },
     { label:'SLA Compliance', val: slaRate!=null?pct(slaRate*100):'—', sub:'repair on time',
       color: slaRate!=null&&slaRate<0.7?'text-wmt-red':'text-green-700' },
     { label:'EPA Cert Valid', val: epaPct!=null?pct(epaPct*100):'—', sub:`${fmt(epaValid)} of ${fmt(epaTot)}`,
       color: epaTot>0&&epaPct<0.9?'text-wmt-red':'text-green-700' },
   ];
-  document.getElementById('overview-kpis').innerHTML = cards.map(c=>`
+  document.getElementById('overview-kpis').innerHTML = cards.map(c=>{
+    const iconHtml = c.info ? `
+      <span class="info-wrap">
+        <button class="info-icon" aria-label="How ${c.label} is calculated">i</button>
+        <span class="info-tip">${c.info}</span>
+      </span>` : '';
+    return `
     <div class="kpi-card bg-white rounded-xl shadow p-4">
-      <div class="text-xs text-wmt-gray100 font-medium mb-1">${c.label}</div>
+      <div class="text-xs text-wmt-gray100 font-medium mb-1 flex items-center">
+        ${c.label}${iconHtml}
+      </div>
       <div class="text-2xl font-black ${c.color}">${c.val}</div>
       <div class="text-xs text-wmt-gray100 mt-1">${c.sub}</div>
-    </div>`).join('');
+    </div>`;
+  }).join('');
 }
 
 function _renderInsight(storeScores, orgScores) {
