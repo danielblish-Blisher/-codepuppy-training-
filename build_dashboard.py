@@ -440,6 +440,7 @@ TEMPLATE_ORDER = [
     "observations_tab.html",
     "refrigerant_tab.html",
     "topgun_tab.html",
+    "epa_tab.html",
     # tab JS
     "overview_js.html",
     "technicians_js.html",
@@ -447,6 +448,7 @@ TEMPLATE_ORDER = [
     "observations_js.html",
     "refrigerant_js.html",
     "topgun_js.html",
+    "epa_js.html",
     "filters_shared_js.html",
     # closing
     "footer.html",
