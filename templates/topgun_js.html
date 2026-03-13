@@ -3,7 +3,11 @@
 let _tgWoChart=null, _tgTntChart=null, _tgCodesChart=null;
 
 function render_topgun() {
-  const data = (TOP_GUN||[]);
+  const data = filterByOrg(TOP_GUN||[], {
+    sr:  'FM_Sr_Director',
+    dir: 'FM_Director',
+    rm:  'FM_Regional_Mgr',
+  });
   _renderTgKpis(data);
   _renderTgWoChart(data);
   _renderTgTntChart(data);
@@ -139,17 +143,20 @@ function _renderTgTable(data) {
 }
 
 function exportTopGunTable() {
-  const hdr='Store,Sr Director,Director,RM,Problem Code,Call Date,Duration,WOs Before,WOs After,WO Reduction %,TnT Before,TnT After,TnT Diff %,Status\n';
-  const csv=hdr+(TOP_GUN||[]).map(d=>[
-    d.Store_nbr,d.FM_Sr_Director,d.FM_Director,d.FM_Regional_Mgr,
-    (d.Problem_code_desc||'').replace(/,/g,';'),d.Call_Date,
-    d.Project_duration_in_days,d.Before_Workorders,d.After_Workorders,
-    d.pct_reduction_wo,d.Time_in_Target_Before,d.Time_in_Target_After,
-    d.pct_diff_tnt,d.Status
+  const data = filterByOrg(TOP_GUN||[], {
+    sr:'FM_Sr_Director', dir:'FM_Director', rm:'FM_Regional_Mgr',
+  });
+  const hdr = 'Store,Sr Director,Director,RM,Problem Code,Call Date,Duration,WOs Before,WOs After,WO Reduction %,TnT Before,TnT After,TnT Diff %,Status\n';
+  const csv = hdr + data.map(d => [
+    d.Store_nbr, d.FM_Sr_Director, d.FM_Director, d.FM_Regional_Mgr,
+    (d.Problem_code_desc||'').replace(/,/g,';'), d.Call_Date,
+    d.Project_duration_in_days, d.Before_Workorders, d.After_Workorders,
+    d.pct_reduction_wo, d.Time_in_Target_Before, d.Time_in_Target_After,
+    d.pct_diff_tnt, d.Status,
   ].join(',')).join('\n');
-  const a=document.createElement('a');
-  a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv);
-  a.download='hvacr_topgun_engagements.csv';
+  const a = document.createElement('a');
+  a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+  a.download = 'hvacr_topgun_engagements.csv';
   a.click();
 }
 </script>
