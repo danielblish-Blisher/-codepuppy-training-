@@ -3,6 +3,9 @@
 let _tgWoChart=null, _tgTntChart=null, _tgCodesChart=null;
 
 function render_topgun() {
+  // DEBUG: confirm function fires
+  const _dbg = document.getElementById('tg-debug');
+  if (_dbg) _dbg.textContent = 'render called ✓ | TOP_GUN rows: ' + (TOP_GUN||[]).length + ' | ORG_FILTERS defined: ' + (typeof ORG_FILTERS !== 'undefined');
   const data = filterByOrg(TOP_GUN||[], {
     sr:  'FM_Sr_Director',
     dir: 'FM_Director',
@@ -159,4 +162,7 @@ function exportTopGunTable() {
   a.download = 'hvacr_topgun_engagements.csv';
   a.click();
 }
+
+// Explicitly register on window (Safari scoping safety)
+window.render_topgun = render_topgun;
 </script>

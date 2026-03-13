@@ -4,6 +4,9 @@
 let _rChartType=null, _rChartReason=null, _rChartTrend=null, _rChartSr=null;
 
 function render_refrigerant() {
+  // DEBUG: confirm function fires
+  const _dbg = document.getElementById('refrig-debug');
+  if (_dbg) _dbg.textContent = 'render called ✓ | REFRIG_RECENT rows: ' + (REFRIG_RECENT||[]).length + ' | ORG_FILTERS defined: ' + (typeof ORG_FILTERS !== 'undefined');
   const base = filterByOrg(REFRIG_RECENT||[], {
     sr:  'fm_sr_director',
     dir: 'fm_director',
@@ -215,4 +218,7 @@ function exportRefrigTable() {
   a.download = 'refrigerant_activity.csv';
   a.click();
 }
+
+// Explicitly register on window (Safari scoping safety)
+window.render_refrigerant = render_refrigerant;
 </script>
