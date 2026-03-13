@@ -243,14 +243,17 @@ run_query("top_gun", """
 """)
 
 
+# NOTE: sc_rec_id and tracking_nbr are both STRING — no casting needed for the JOIN.
+# use_date is a non-standard timestamp string ('2026-03-11 05:00:00.0000000 +00:00')
+# so we use SUBSTR(use_date, 1, 10) to extract the YYYY-MM-DD portion safely.
 run_query("refrigerant_materials", """
     SELECT
-        m.sc_rec_id                          AS tracking_nbr,
+        m.sc_rec_id                              AS tracking_nbr,
         m.refrigerant_type_name,
-        CAST(m.qty AS FLOAT64)               AS lbs_used,
+        CAST(m.qty AS FLOAT64)                   AS lbs_used,
         m.refrigerant_reason,
-        CAST(m.use_date AS DATE)             AS use_date,
-        CAST(m.is_ods AS STRING)             AS is_ods,
+        SUBSTR(m.use_date, 1, 10)                AS use_date,
+        CAST(m.is_ods AS STRING)                 AS is_ods,
         wo.store_nbr,
         wo.store_type_name,
         wo.fm_sr_director,
@@ -259,11 +262,11 @@ run_query("refrigerant_materials", """
         wo.trade_name
     FROM `re-ods-prod.us_re_ods_prod_pub.sc_walmart_materials` m
     INNER JOIN `re-ods-explorer.us_re_fm_prod.fsai_workorders` wo
-        ON SAFE_CAST(m.sc_rec_id AS INT64) = SAFE_CAST(wo.tracking_nbr AS INT64)
+        ON m.sc_rec_id = wo.tracking_nbr
     WHERE m.refrigerant_type_name IS NOT NULL
       AND CAST(m.qty AS FLOAT64) > 0
-      AND m.use_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 12 MONTH)
-    ORDER BY m.use_date DESC
+      AND SUBSTR(m.use_date, 1, 10) >= FORMAT_DATE('%Y-%m-%d', DATE_SUB(CURRENT_DATE(), INTERVAL 12 MONTH))
+    ORDER BY use_date DESC
 """, max_rows=300_000)
 
 
