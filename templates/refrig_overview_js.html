@@ -100,7 +100,7 @@ function _roRenderKpis() {
     },
   ];
 
-  document.getElementById('refrig-kpis').innerHTML = cards.map(c =>
+  document.getElementById('ro-kpis').innerHTML = cards.map(c =>
     `<div class="kpi-card bg-white rounded-xl shadow p-4">
       <div class="text-xs text-wmt-gray100 mb-1">${c.label}</div>
       <div class="text-2xl font-black ${c.color}">${c.val}</div>
@@ -137,7 +137,7 @@ function _roRenderInsightBanner() {
   text += `Total refrigerant tracked: <strong>${(rs.total_lbs || 0).toLocaleString()} lbs</strong> across ` +
     `<strong>${rs.stores || 0}</strong> stores.`;
 
-  document.getElementById('refrig-insight-text').innerHTML = text;
+  document.getElementById('ro-insight-text').innerHTML = text;
 }
 
 // ── Monthly Trend Chart ───────────────────────────────────────────────
@@ -246,7 +246,7 @@ function _roRenderTrainingTable(filter) {
   const stores = (REFRIG_TRAINING_STORES || []).filter(s =>
     !filter || String(s.store_nbr).includes(filter.trim())
   );
-  const tbody = document.getElementById('refrig-training-tbody');
+  const tbody = document.getElementById('ro-training-tbody');
   if (!tbody) return;
   tbody.innerHTML = stores.map((s, i) => `
     <tr class="hover:bg-wmt-gray10 ${_rowBg(s.training_score, i)}">
@@ -302,7 +302,7 @@ function _roRenderEpaPanel() {
   const valid    = certs.filter(c => c._status === 'valid');
 
   // Mini KPI row
-  document.getElementById('refrig-epa-kpis').innerHTML = [
+  document.getElementById('ro-epa-kpis').innerHTML = [
     { label: 'Expired',       val: expired.length,  color: expired.length  ? 'text-wmt-red'    : 'text-green-700' },
     { label: 'Expiring 90d',  val: expiring.length, color: expiring.length ? 'text-yellow-600' : 'text-green-700' },
     { label: 'Valid',         val: valid.length,    color: 'text-green-700' },
@@ -315,7 +315,7 @@ function _roRenderEpaPanel() {
 
   // List: expired first, then expiring
   const atRisk = [...expired, ...expiring].slice(0, 25);
-  const el = document.getElementById('refrig-epa-list');
+  const el = document.getElementById('ro-epa-list');
   if (!el) return;
   if (!atRisk.length) {
     el.innerHTML = '<span class="text-green-700 font-semibold">✓ No expired or expiring certs!</span>';
@@ -350,7 +350,7 @@ function _roRenderSlaPanel() {
     .sort((a, b) => a.slaRate - b.slaRate)
     .slice(0, 40);
 
-  const tbody = document.getElementById('refrig-sla-tbody');
+  const tbody = document.getElementById('ro-sla-tbody');
   if (!tbody) return;
   tbody.innerHTML = lowSla.map((s, i) => `
     <tr class="hover:bg-wmt-gray10 ${i % 2 === 0 ? '' : 'bg-gray-50/50'}">
