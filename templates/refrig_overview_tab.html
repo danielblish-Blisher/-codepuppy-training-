@@ -1,0 +1,164 @@
+<!-- ====== REFRIGERATION OVERVIEW TAB ====== -->
+<!-- Unified hub: Training Opportunities · WO Performance · Observations · EPA / Overdue -->
+<div id="tab-refrig_overview" class="tab-pane hidden max-w-screen-2xl mx-auto px-4 py-6 space-y-8">
+
+  <!-- ── Executive Insight Banner ── -->
+  <div id="refrig-insight-banner"
+       class="rounded-xl bg-gradient-to-r from-wmt-blue to-blue-700 text-white p-5 shadow-lg">
+    <h2 class="text-xl font-black mb-1">🧊 Refrigeration Program Overview</h2>
+    <p id="refrig-insight-text" class="text-blue-100 text-sm leading-relaxed">
+      Loading insights…
+    </p>
+  </div>
+
+  <!-- ── KPI Cards Row ── -->
+  <div id="refrig-kpis"
+       class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+    <!-- populated by JS -->
+  </div>
+
+  <!-- ── Charts Row 1: WO Trend + Problem Codes ── -->
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+    <div class="bg-white rounded-xl shadow p-5">
+      <h3 class="font-bold text-wmt-gray160 mb-3 text-sm">📈 Refrigerant WO Volume — Monthly Trend</h3>
+      <div style="height:260px">
+        <canvas id="chart-refrig-trend-ov"></canvas>
+      </div>
+    </div>
+
+    <div class="bg-white rounded-xl shadow p-5">
+      <h3 class="font-bold text-wmt-gray160 mb-3 text-sm">🔧 Top Refrigerant Problem Codes (by WO count)</h3>
+      <div style="height:260px">
+        <canvas id="chart-refrig-prob-ov"></canvas>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ── Charts Row 2: Refrigerant Type Usage + Field Obs Groups ── -->
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+    <div class="bg-white rounded-xl shadow p-5">
+      <h3 class="font-bold text-wmt-gray160 mb-3 text-sm">🧪 Refrigerant Usage by Type (lbs)</h3>
+      <div style="height:240px">
+        <canvas id="chart-refrig-type-ov"></canvas>
+      </div>
+    </div>
+
+    <div class="bg-white rounded-xl shadow p-5">
+      <h3 class="font-bold text-wmt-gray160 mb-3 text-sm">👁️ Field Observations by Question Group</h3>
+      <div style="height:240px">
+        <canvas id="chart-refrig-obs-ov"></canvas>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ── Training Opportunity Rankings ── -->
+  <div class="bg-white rounded-xl shadow p-5">
+    <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+      <div>
+        <h3 class="font-bold text-wmt-gray160 text-sm">🎯 Store Training Opportunity Rankings</h3>
+        <p class="text-xs text-wmt-gray100 mt-0.5">
+          Score = total WOs × repeat ratio + distinct problem types × 10 + peak issue spike.
+          Higher = greater need.
+        </p>
+      </div>
+      <div class="flex gap-2 items-center">
+        <input id="refrig-store-search" type="text" placeholder="Filter store #…"
+               class="border border-gray-300 rounded px-2 py-1 text-xs w-28
+                      focus:outline-none focus:ring-2 focus:ring-wmt-blue"
+               oninput="filterRefrigTrainingTable(this.value)" />
+        <button onclick="exportRefrigTraining()"
+                class="text-xs px-3 py-1.5 bg-wmt-blue text-white rounded hover:bg-blue-700
+                       transition-colors font-semibold">
+          ⬇ CSV
+        </button>
+      </div>
+    </div>
+
+    <!-- Priority legend -->
+    <div class="flex gap-4 mb-3 text-xs flex-wrap">
+      <span class="inline-flex items-center gap-1">
+        <span class="inline-block w-3 h-3 rounded-full bg-red-100 border border-red-400"></span>
+        Critical (&gt;2000)
+      </span>
+      <span class="inline-flex items-center gap-1">
+        <span class="inline-block w-3 h-3 rounded-full bg-yellow-100 border border-yellow-400"></span>
+        High (1000–2000)
+      </span>
+      <span class="inline-flex items-center gap-1">
+        <span class="inline-block w-3 h-3 rounded-full bg-green-100 border border-green-400"></span>
+        Moderate (&lt;1000)
+      </span>
+    </div>
+
+    <div class="overflow-x-auto max-h-96 overflow-y-auto">
+      <table class="w-full text-xs border-collapse">
+        <thead class="sticky top-0 bg-gray-50 z-10">
+          <tr>
+            <th class="px-3 py-2 text-left text-wmt-gray100 font-semibold border-b">Rank</th>
+            <th class="px-3 py-2 text-left text-wmt-gray100 font-semibold border-b">Store #</th>
+            <th class="px-3 py-2 text-right text-wmt-gray100 font-semibold border-b">Training Score</th>
+            <th class="px-3 py-2 text-right text-wmt-gray100 font-semibold border-b">Total Refrig WOs</th>
+            <th class="px-3 py-2 text-right text-wmt-gray100 font-semibold border-b">Repeat Issue WOs</th>
+            <th class="px-3 py-2 text-right text-wmt-gray100 font-semibold border-b">Distinct Problems</th>
+            <th class="px-3 py-2 text-right text-wmt-gray100 font-semibold border-b">Peak Single Issue</th>
+            <th class="px-3 py-2 text-center text-wmt-gray100 font-semibold border-b">Priority</th>
+          </tr>
+        </thead>
+        <tbody id="refrig-training-tbody">
+          <!-- populated by JS -->
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ── Overdue / At-Risk Section ── -->
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+    <!-- EPA Certs expiring / expired -->
+    <div class="bg-white rounded-xl shadow p-5">
+      <h3 class="font-bold text-wmt-gray160 mb-3 text-sm">⚠️ EPA Cert Status — Overdue &amp; Expiring</h3>
+      <div id="refrig-epa-kpis" class="grid grid-cols-3 gap-2 mb-4">
+        <!-- mini KPI cards -->
+      </div>
+      <div id="refrig-epa-list" class="space-y-1 max-h-52 overflow-y-auto text-xs">
+        Loading…
+      </div>
+      <p class="text-xs text-wmt-gray100 mt-3">
+        Showing expired &amp; expiring within 90 days. View full list in
+        <button onclick="setTab('epa')" class="text-wmt-blue underline">EPA Certs tab</button>.
+      </p>
+    </div>
+
+    <!-- Stores with low SLA compliance -->
+    <div class="bg-white rounded-xl shadow p-5">
+      <h3 class="font-bold text-wmt-gray160 mb-3 text-sm">🚨 Stores with Poor SLA Compliance (&lt;70%)</h3>
+      <div id="refrig-sla-list" class="max-h-72 overflow-y-auto">
+        <table class="w-full text-xs border-collapse">
+          <thead class="sticky top-0 bg-gray-50">
+            <tr>
+              <th class="px-2 py-1.5 text-left text-wmt-gray100 font-semibold border-b">Store</th>
+              <th class="px-2 py-1.5 text-right text-wmt-gray100 font-semibold border-b">SLA %</th>
+              <th class="px-2 py-1.5 text-right text-wmt-gray100 font-semibold border-b">FCR %</th>
+              <th class="px-2 py-1.5 text-right text-wmt-gray100 font-semibold border-b">Total WOs</th>
+              <th class="px-2 py-1.5 text-left text-wmt-gray100 font-semibold border-b">Top Problem</th>
+            </tr>
+          </thead>
+          <tbody id="refrig-sla-tbody">
+            <!-- populated by JS -->
+          </tbody>
+        </table>
+      </div>
+      <p class="text-xs text-wmt-gray100 mt-3">
+        View full WO detail in
+        <button onclick="setTab('workorders')" class="text-wmt-blue underline">WO Performance tab</button>.
+      </p>
+    </div>
+
+  </div>
+
+</div>
+<!-- end #tab-refrig_overview -->

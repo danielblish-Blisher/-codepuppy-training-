@@ -40,13 +40,15 @@ def js_var(name: str, data) -> str:
 # ── Load raw data ────────────────────────────────────────────────
 
 print("  Loading data files…")
-exam_reg    = load("exam_reg")
-tech_align  = load("tech_alignment")
-tech_stores = load("tech_stores")
-training_wo = load("training_workorders")
-observations= load("observations")
-top_gun     = load("top_gun")
-pm_comply   = load("pm_compliance")
+exam_reg             = load("exam_reg")
+tech_align           = load("tech_alignment")
+tech_stores          = load("tech_stores")
+training_wo          = load("training_workorders")
+observations         = load("observations")
+top_gun              = load("top_gun")
+pm_comply            = load("pm_compliance")
+epa_certs_raw        = load("epa_certs")
+refrig_training_raw  = load("refrig_training_stores")
 
 
 def _f(v):
@@ -420,9 +422,13 @@ data_block += js_var("REFRIG_STATS",      refrig_stats)
 data_block += js_var("REFRIG_BY_TYPE",    refrig_by_type)
 data_block += js_var("REFRIG_BY_REASON",  refrig_by_reason)
 data_block += js_var("REFRIG_TREND",      refrig_trend)
-data_block += js_var("REFRIG_BY_SR",      refrig_by_sr)
-data_block += js_var("REFRIG_RECENT",     refrig_recent)
-data_block += js_var("TOP_GUN",          compact_tg)
+data_block += js_var("REFRIG_BY_SR",          refrig_by_sr)
+data_block += js_var("REFRIG_RECENT",         refrig_recent)
+# EPA certs (was missing — fix!)
+data_block += js_var("EPA_CERTS",             epa_certs_raw)
+# Refrigeration training opportunity store rankings
+data_block += js_var("REFRIG_TRAINING_STORES", refrig_training_raw)
+data_block += js_var("TOP_GUN",               compact_tg)
 data_block += "</script>\n"
 
 
@@ -438,6 +444,7 @@ TEMPLATE_ORDER = [
     "technicians_tab.html",
     "workorders_tab.html",
     "observations_tab.html",
+    "refrig_overview_tab.html",
     "refrigerant_tab.html",
     "topgun_tab.html",
     "epa_tab.html",
@@ -446,6 +453,7 @@ TEMPLATE_ORDER = [
     "technicians_js.html",
     "workorders_js.html",
     "observations_js.html",
+    "refrig_overview_js.html",
     "refrigerant_js.html",
     "topgun_js.html",
     "epa_js.html",

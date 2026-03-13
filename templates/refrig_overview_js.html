@@ -1,0 +1,370 @@
+<!-- ====== REFRIGERATION OVERVIEW JS ====== -->
+<!-- Pulls from: REFRIG_*, REFRIG_TRAINING_STORES, STORE_WO_METRICS, OBS_GROUPS, EPA_CERTS -->
+<script>
+let _roChartTrend=null, _roChartProb=null, _roChartType=null, _roChartObs=null;
+
+// ── Helpers ──────────────────────────────────────────────────────────
+function _priorityBand(score) {
+  if (score > 2000) return 'critical';
+  if (score >= 1000) return 'high';
+  return 'moderate';
+}
+
+function _priorityPill(score) {
+  const band = _priorityBand(score);
+  if (band === 'critical')
+    return '<span class="bg-red-100 text-red-800 border border-red-400 rounded px-2 py-0.5 font-bold">Critical</span>';
+  if (band === 'high')
+    return '<span class="bg-yellow-100 text-yellow-800 border border-yellow-400 rounded px-2 py-0.5 font-bold">High</span>';
+  return '<span class="bg-green-100 text-green-800 border border-green-400 rounded px-2 py-0.5">Moderate</span>';
+}
+
+function _rowBg(score, i) {
+  const band = _priorityBand(score);
+  if (band === 'critical') return 'bg-red-50';
+  if (band === 'high')     return 'bg-yellow-50';
+  return i % 2 === 0 ? '' : 'bg-gray-50/50';
+}
+
+// ── Main render function (called from filters_shared_js.html) ────────
+function render_refrig_overview() {
+  _roRenderKpis();
+  _roRenderInsightBanner();
+  _roRenderTrendChart();
+  _roRenderProbChart();
+  _roRenderTypeChart();
+  _roRenderObsChart();
+  _roRenderTrainingTable('');
+  _roRenderEpaPanel();
+  _roRenderSlaPanel();
+}
+
+// ── KPI Cards ────────────────────────────────────────────────────────
+function _roRenderKpis() {
+  const rs  = REFRIG_STATS || {};
+  const stores = REFRIG_TRAINING_STORES || [];
+  const critical = stores.filter(s => s.training_score > 2000).length;
+  const high     = stores.filter(s => s.training_score >= 1000 && s.training_score <= 2000).length;
+
+  // EPA at-risk count
+  const today = new Date();
+  const in90  = new Date(today); in90.setDate(today.getDate() + 90);
+  const epaAtRisk = (EPA_CERTS || []).filter(c => {
+    if (!c.expiry_date) return false;
+    const exp = new Date(c.expiry_date);
+    return exp <= in90;
+  }).length;
+
+  // SLA non-compliant stores
+  const slaRisk = (STORE_WO_METRICS || []).filter(s => {
+    const total = s.sla_y + s.sla_n;
+    return total > 0 && (s.sla_y / total) < 0.70;
+  }).length;
+
+  const cards = [
+    {
+      label: 'Refrig Events',
+      val:   fmt(rs.total_events || 0),
+      sub:   'material use records',
+      color: 'text-wmt-blue',
+    },
+    {
+      label: 'Total Lbs Used',
+      val:   (rs.total_lbs || 0).toLocaleString(),
+      sub:   'lbs of refrigerant',
+      color: 'text-wmt-blue',
+    },
+    {
+      label: 'Critical Stores',
+      val:   String(critical),
+      sub:   'training score >2000',
+      color: critical > 0 ? 'text-wmt-red' : 'text-green-700',
+    },
+    {
+      label: 'High Priority',
+      val:   String(high),
+      sub:   'training score 1000–2000',
+      color: high > 0 ? 'text-yellow-600' : 'text-green-700',
+    },
+    {
+      label: 'EPA At-Risk',
+      val:   String(epaAtRisk),
+      sub:   'expired or expiring 90d',
+      color: epaAtRisk > 0 ? 'text-wmt-red' : 'text-green-700',
+    },
+    {
+      label: 'Low SLA Stores',
+      val:   String(slaRisk),
+      sub:   'SLA compliance <70%',
+      color: slaRisk > 10 ? 'text-wmt-red' : slaRisk > 0 ? 'text-yellow-600' : 'text-green-700',
+    },
+  ];
+
+  document.getElementById('refrig-kpis').innerHTML = cards.map(c =>
+    `<div class="kpi-card bg-white rounded-xl shadow p-4">
+      <div class="text-xs text-wmt-gray100 mb-1">${c.label}</div>
+      <div class="text-2xl font-black ${c.color}">${c.val}</div>
+      <div class="text-xs text-wmt-gray100 mt-1">${c.sub}</div>
+    </div>`
+  ).join('');
+}
+
+// ── Insight Banner ───────────────────────────────────────────────────
+function _roRenderInsightBanner() {
+  const stores   = REFRIG_TRAINING_STORES || [];
+  const rs       = REFRIG_STATS || {};
+  const critical = stores.filter(s => s.training_score > 2000);
+  const topStore = stores[0];
+  const totalWos = stores.reduce((a, s) => a + s.total_refrig_wos, 0);
+  const avgScore = stores.length
+    ? Math.round(stores.reduce((a, s) => a + s.training_score, 0) / stores.length)
+    : 0;
+
+  const topPeaks = (REFRIG_BY_REASON || []).slice(0, 2).map(r => r.reason).join(' and ');
+
+  let text = `Across ${stores.length} stores tracked, <strong>${totalWos.toLocaleString()}</strong> refrigeration work orders ` +
+    `have been recorded, with an average training opportunity score of <strong>${avgScore.toLocaleString()}</strong>. `;
+
+  if (critical.length > 0) {
+    text += `<strong class="text-yellow-200">${critical.length} stores are Critical priority</strong> (score &gt;2000) ` +
+      `— led by Store <strong>${topStore?.store_nbr}</strong> at <strong>${topStore?.training_score?.toLocaleString()}</strong>. `;
+  }
+
+  if (topPeaks) {
+    text += `Top refrigerant use reasons: <strong>${topPeaks}</strong>. `;
+  }
+
+  text += `Total refrigerant tracked: <strong>${(rs.total_lbs || 0).toLocaleString()} lbs</strong> across ` +
+    `<strong>${rs.stores || 0}</strong> stores.`;
+
+  document.getElementById('refrig-insight-text').innerHTML = text;
+}
+
+// ── Monthly Trend Chart ───────────────────────────────────────────────
+function _roRenderTrendChart() {
+  const trend  = REFRIG_TREND || [];
+  const labels = trend.map(t => t.month);
+  const data   = trend.map(t => t.events);
+  const ctx    = document.getElementById('chart-refrig-trend-ov')?.getContext('2d');
+  if (!ctx) return;
+  if (_roChartTrend) _roChartTrend.destroy();
+  _roChartTrend = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        label: 'Events',
+        data,
+        backgroundColor: '#0053e2',
+        borderRadius: 3,
+      }],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        y: { ticks: { font: { size: 10 } }, grid: { color: '#f0f0f0' } },
+        x: { ticks: { font: { size: 8 }, maxRotation: 45 } },
+      },
+    },
+  });
+}
+
+// ── Top Problem Codes Chart ───────────────────────────────────────────
+function _roRenderProbChart() {
+  const top  = (PROB_METRICS || []).slice(0, 15);
+  const ctx  = document.getElementById('chart-refrig-prob-ov')?.getContext('2d');
+  if (!ctx) return;
+  if (_roChartProb) _roChartProb.destroy();
+  const labels = top.map(p => p.prob.length > 32 ? p.prob.slice(0, 32) + '…' : p.prob);
+  const data   = top.map(p => p.total);
+  _roChartProb = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{ label: 'WO Count', data, backgroundColor: '#ffc220', borderRadius: 3 }],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        y: { ticks: { font: { size: 10 } }, grid: { color: '#f0f0f0' } },
+        x: { ticks: { font: { size: 8 }, maxRotation: 45 } },
+      },
+    },
+  });
+}
+
+// ── Refrigerant Type Chart ────────────────────────────────────────────
+function _roRenderTypeChart() {
+  const top  = (REFRIG_BY_TYPE || []).slice(0, 12);
+  const ctx  = document.getElementById('chart-refrig-type-ov')?.getContext('2d');
+  if (!ctx) return;
+  if (_roChartType) _roChartType.destroy();
+  _roChartType = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: top.map(r => r.type.length > 28 ? r.type.slice(0, 28) + '…' : r.type),
+      datasets: [{ label: 'Lbs', data: top.map(r => r.lbs), backgroundColor: '#0053e2', borderRadius: 3 }],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false, indexAxis: 'y',
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { font: { size: 10 } }, grid: { color: '#f0f0f0' } },
+        y: { ticks: { font: { size: 9 } } },
+      },
+    },
+  });
+}
+
+// ── Field Obs Groups Chart ────────────────────────────────────────────
+function _roRenderObsChart() {
+  const top  = (OBS_GROUPS || []).slice(0, 12);
+  const ctx  = document.getElementById('chart-refrig-obs-ov')?.getContext('2d');
+  if (!ctx) return;
+  if (_roChartObs) _roChartObs.destroy();
+  _roChartObs = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: top.map(g => g.group.length > 28 ? g.group.slice(0, 28) + '…' : g.group),
+      datasets: [{ label: 'Observations', data: top.map(g => g.count), backgroundColor: '#ffc220', borderRadius: 3 }],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false, indexAxis: 'y',
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { font: { size: 10 } }, grid: { color: '#f0f0f0' } },
+        y: { ticks: { font: { size: 9 } } },
+      },
+    },
+  });
+}
+
+// ── Training Table ────────────────────────────────────────────────────
+function _roRenderTrainingTable(filter) {
+  const stores = (REFRIG_TRAINING_STORES || []).filter(s =>
+    !filter || String(s.store_nbr).includes(filter.trim())
+  );
+  const tbody = document.getElementById('refrig-training-tbody');
+  if (!tbody) return;
+  tbody.innerHTML = stores.map((s, i) => `
+    <tr class="hover:bg-wmt-gray10 ${_rowBg(s.training_score, i)}">
+      <td class="px-3 py-2 text-wmt-gray100">${i + 1}</td>
+      <td class="px-3 py-2 font-mono font-semibold">${s.store_nbr}</td>
+      <td class="px-3 py-2 text-right font-black
+          ${s.training_score > 2000 ? 'text-wmt-red' : s.training_score >= 1000 ? 'text-yellow-600' : 'text-green-700'}">
+        ${s.training_score.toLocaleString()}
+      </td>
+      <td class="px-3 py-2 text-right">${s.total_refrig_wos.toLocaleString()}</td>
+      <td class="px-3 py-2 text-right">${s.repeat_issue_wos.toLocaleString()}</td>
+      <td class="px-3 py-2 text-right">${s.distinct_problem_types}</td>
+      <td class="px-3 py-2 text-right">${s.max_wos_single_problem.toLocaleString()}</td>
+      <td class="px-3 py-2 text-center">${_priorityPill(s.training_score)}</td>
+    </tr>`
+  ).join('');
+}
+
+function filterRefrigTrainingTable(val) {
+  _roRenderTrainingTable(val);
+}
+
+function exportRefrigTraining() {
+  const hdr = 'Store #,Training Score,Total Refrig WOs,Repeat Issue WOs,Distinct Problems,Peak Single Issue,Priority\n';
+  const csv = hdr + (REFRIG_TRAINING_STORES || []).map(s =>
+    [s.store_nbr, s.training_score, s.total_refrig_wos, s.repeat_issue_wos,
+     s.distinct_problem_types, s.max_wos_single_problem, _priorityBand(s.training_score)].join(',')
+  ).join('\n');
+  const a = document.createElement('a');
+  a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+  a.download = 'refrig_training_opportunities.csv';
+  a.click();
+}
+
+// ── EPA Panel ─────────────────────────────────────────────────────────
+function _roRenderEpaPanel() {
+  const today = new Date();
+  const in90  = new Date(today); in90.setDate(today.getDate() + 90);
+
+  const certs = (EPA_CERTS || []).map(c => {
+    const exp = c.expiry_date ? new Date(c.expiry_date) : null;
+    let status = 'no-date';
+    if (exp) {
+      if (exp < today)      status = 'expired';
+      else if (exp <= in90) status = 'expiring';
+      else                  status = 'valid';
+    }
+    return { ...c, _status: status, _exp: exp };
+  });
+
+  const expired  = certs.filter(c => c._status === 'expired');
+  const expiring = certs.filter(c => c._status === 'expiring');
+  const valid    = certs.filter(c => c._status === 'valid');
+
+  // Mini KPI row
+  document.getElementById('refrig-epa-kpis').innerHTML = [
+    { label: 'Expired',       val: expired.length,  color: expired.length  ? 'text-wmt-red'    : 'text-green-700' },
+    { label: 'Expiring 90d',  val: expiring.length, color: expiring.length ? 'text-yellow-600' : 'text-green-700' },
+    { label: 'Valid',         val: valid.length,    color: 'text-green-700' },
+  ].map(c =>
+    `<div class="bg-gray-50 rounded-lg p-2 text-center">
+      <div class="text-lg font-black ${c.color}">${c.val}</div>
+      <div class="text-xs text-wmt-gray100">${c.label}</div>
+    </div>`
+  ).join('');
+
+  // List: expired first, then expiring
+  const atRisk = [...expired, ...expiring].slice(0, 25);
+  const el = document.getElementById('refrig-epa-list');
+  if (!el) return;
+  if (!atRisk.length) {
+    el.innerHTML = '<span class="text-green-700 font-semibold">✓ No expired or expiring certs!</span>';
+    return;
+  }
+  el.innerHTML = atRisk.map(c => {
+    const pill = c._status === 'expired'
+      ? '<span class="text-white bg-wmt-red rounded px-1.5 font-bold">Expired</span>'
+      : '<span class="text-yellow-800 bg-yellow-100 border border-yellow-400 rounded px-1.5">Expiring</span>';
+    return `<div class="flex justify-between gap-2 border-b border-gray-100 py-1 flex-wrap">
+      <span class="font-medium">${c.full_name || '—'}</span>
+      <span class="text-wmt-gray100">${c.license_type || '—'}</span>
+      <span class="${c._status === 'expired' ? 'text-wmt-red font-semibold' : 'text-yellow-600 font-semibold'}">
+        ${c.expiry_date || '—'}
+      </span>
+      ${pill}
+    </div>`;
+  }).join('');
+}
+
+// ── SLA Risk Panel ────────────────────────────────────────────────────
+function _roRenderSlaPanel() {
+  const lowSla = (STORE_WO_METRICS || [])
+    .map(s => ({
+      sn:      String(s.store_nbr),
+      slaRate: (s.sla_y + s.sla_n) > 0 ? s.sla_y / (s.sla_y + s.sla_n) : null,
+      fcrRate: (s.fcr_y + s.fcr_n) > 0 ? s.fcr_y / (s.fcr_y + s.fcr_n) : null,
+      total:   s.total_wos,
+      topProb: s.top_prob || '',
+    }))
+    .filter(s => s.slaRate !== null && s.slaRate < 0.70)
+    .sort((a, b) => a.slaRate - b.slaRate)
+    .slice(0, 40);
+
+  const tbody = document.getElementById('refrig-sla-tbody');
+  if (!tbody) return;
+  tbody.innerHTML = lowSla.map((s, i) => `
+    <tr class="hover:bg-wmt-gray10 ${i % 2 === 0 ? '' : 'bg-gray-50/50'}">
+      <td class="px-2 py-1.5 font-mono font-semibold">${s.sn}</td>
+      <td class="px-2 py-1.5 text-right text-wmt-red font-bold">${pct(s.slaRate * 100)}</td>
+      <td class="px-2 py-1.5 text-right
+          ${s.fcrRate !== null && s.fcrRate < 0.7 ? 'text-wmt-red' : ''}">
+        ${s.fcrRate !== null ? pct(s.fcrRate * 100) : '—'}
+      </td>
+      <td class="px-2 py-1.5 text-right">${fmt(s.total)}</td>
+      <td class="px-2 py-1.5 max-w-[150px] truncate text-wmt-gray100" title="${s.topProb}">
+        ${s.topProb.slice(0, 40) || '—'}
+      </td>
+    </tr>`
+  ).join('');
+}
+</script>
