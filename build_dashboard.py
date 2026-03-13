@@ -41,7 +41,6 @@ def js_var(name: str, data) -> str:
 
 print("  Loading data files…")
 exam_reg    = load("exam_reg")
-epa_certs   = load("epa_certs")
 tech_align  = load("tech_alignment")
 tech_stores = load("tech_stores")
 training_wo = load("training_workorders")
@@ -357,9 +356,7 @@ refrig_recent = [
 ]
 
 
-# ── EPA certs (pass-through, already clean) ─────────────────────────
 
-compact_epa = epa_certs
 
 
 # ── Top Gun (pass-through, already clean) ───────────────────────────
@@ -394,7 +391,6 @@ print(f"  Technicians:   {len(compact_tech):,}")
 print(f"  Tech-stores:   {len(compact_tech_stores):,} (compact pairs)")
 print(f"  Observations:  {obs_stats['total']:,} \u2192 {len(compact_obs_rows)} table rows")
 print(f"  Refrigerant:   {refrig_stats['total_events']:,} events, {refrig_stats['total_lbs']:,.0f} lbs")
-print(f"  EPA certs:     {len(compact_epa):,}")
 print(f"  Top Gun:       {len(compact_tg):,}")
 
 
@@ -426,8 +422,6 @@ data_block += js_var("REFRIG_BY_REASON",  refrig_by_reason)
 data_block += js_var("REFRIG_TREND",      refrig_trend)
 data_block += js_var("REFRIG_BY_SR",      refrig_by_sr)
 data_block += js_var("REFRIG_RECENT",     refrig_recent)
-# EPA + Top Gun
-data_block += js_var("EPA_CERTS",        compact_epa)
 data_block += js_var("TOP_GUN",          compact_tg)
 data_block += "</script>\n"
 
@@ -445,7 +439,6 @@ TEMPLATE_ORDER = [
     "workorders_tab.html",
     "observations_tab.html",
     "refrigerant_tab.html",
-    "epa_tab.html",
     "topgun_tab.html",
     # tab JS
     "overview_js.html",
@@ -453,7 +446,6 @@ TEMPLATE_ORDER = [
     "workorders_js.html",
     "observations_js.html",
     "refrigerant_js.html",
-    "epa_js.html",
     "topgun_js.html",
     "filters_shared_js.html",
     # closing
