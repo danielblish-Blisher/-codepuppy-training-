@@ -1,0 +1,43 @@
+<!-- ====== FOOTER / GLOBAL SEARCH / INIT ====== -->
+<footer class="mt-10 border-t border-gray-200 bg-white py-4 text-center text-xs text-wmt-gray100">
+  HVACR Training Dashboard &nbsp;·&nbsp; Walmart Facility Services
+  &nbsp;·&nbsp; Data: BigQuery + Tableau
+  &nbsp;·&nbsp; <span id="footer-updated"></span>
+</footer>
+
+<script>
+// ── Global search ───────────────────────────────────────────────────────────
+function onGlobalSearch(q) {
+  if (!q || q.length < 2) return;
+  q = q.toLowerCase();
+  // Search store in WO data -> jump to WO tab + filter
+  const matchStore = (TRAINING_WOS||[]).find(w => String(w.store_nbr||'').includes(q));
+  if (matchStore) { setTab('workorders'); return; }
+  // Search tech name -> jump to technicians tab
+  const matchTech = (TECH_ALIGNMENT||[]).find(t =>
+    (`${t.first_name} ${t.last_name}`).toLowerCase().includes(q));
+  if (matchTech) { setTab('technicians'); return; }
+  // Search org name -> jump to overview
+  const matchOrg = (TECH_STORES||[]).find(ts =>
+    (ts.sr_director||'').toLowerCase().includes(q) ||
+    (ts.director||'').toLowerCase().includes(q) ||
+    (ts.rm||'').toLowerCase().includes(q));
+  if (matchOrg) { setTab('overview'); return; }
+}
+
+// ── Init ───────────────────────────────────────────────────────────────────
+window.addEventListener('DOMContentLoaded', () => {
+  // Set updated timestamp from embedded metadata
+  const updEl = document.getElementById('hdr-updated');
+  const ftEl  = document.getElementById('footer-updated');
+  if (typeof DASHBOARD_UPDATED !== 'undefined') {
+    if (updEl) updEl.textContent = 'Updated: ' + DASHBOARD_UPDATED;
+    if (ftEl)  ftEl.textContent  = 'Updated: ' + DASHBOARD_UPDATED;
+  }
+
+  // Initial tab render
+  render_overview();
+});
+</script>
+</body>
+</html>

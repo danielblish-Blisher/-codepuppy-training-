@@ -1,0 +1,127 @@
+<!-- ====== OBSERVATIONS JS ====== -->
+<script>
+let _obsChartGroups=null, _obsChartTrend=null;
+
+function render_observations() {
+  const srFilt    = document.getElementById('obs-sr-filter')?.value||'';
+  const grpFilt   = document.getElementById('obs-group-filter')?.value||'';
+
+  let obs = (OBSERVATIONS||[]);
+  // Populate filters
+  const srSel  = document.getElementById('obs-sr-filter');
+  const grpSel = document.getElementById('obs-group-filter');
+  if(srSel && srSel.options.length<=1) {
+    const srs=[...new Set(obs.map(o=>o.FM_Sr_Director).filter(Boolean))].sort();
+    srs.forEach(s=>{const op=document.createElement('option');op.value=s;op.textContent=s;srSel.appendChild(op);});
+  }
+  if(grpSel && grpSel.options.length<=1) {
+    const grps=[...new Set(obs.map(o=>o.Question_group).filter(Boolean))].sort();
+    grps.forEach(g=>{const op=document.createElement('option');op.value=g;op.textContent=g;grpSel.appendChild(op);});
+  }
+
+  if(srFilt)  obs=obs.filter(o=>o.FM_Sr_Director===srFilt);
+  if(grpFilt) obs=obs.filter(o=>o.Question_group===grpFilt);
+
+  _renderObsKpis(obs);
+  _renderObsGroupChart(obs);
+  _renderObsTrendChart(obs);
+  _renderObsTable(obs);
+}
+
+function _renderObsKpis(obs) {
+  const total   = obs.length;
+  const techs   = new Set(obs.map(o=>o.User_Id).filter(Boolean)).size;
+  const stores  = new Set(obs.map(o=>o.Store).filter(Boolean)).size;
+  const groups  = new Set(obs.map(o=>o.Question_group).filter(Boolean)).size;
+  document.getElementById('obs-kpis').innerHTML = [
+    {label:'Observations',     val:fmt(total),  sub:'total records',     color:'text-wmt-blue'},
+    {label:'Techs Observed',   val:fmt(techs),  sub:'unique technicians', color:'text-wmt-blue'},
+    {label:'Stores Covered',   val:fmt(stores), sub:'unique stores',      color:'text-wmt-blue'},
+    {label:'Question Groups',  val:fmt(groups), sub:'skill categories',   color:'text-wmt-blue'},
+  ].map(c=>`<div class="kpi-card bg-white rounded-xl shadow p-4">
+    <div class="text-xs text-wmt-gray100 mb-1">${c.label}</div>
+    <div class="text-2xl font-black ${c.color}">${c.val}</div>
+    <div class="text-xs text-wmt-gray100 mt-1">${c.sub}</div>
+  </div>`).join('');
+}
+
+function _renderObsGroupChart(obs) {
+  const grpCounts={};
+  obs.forEach(o=>{ const g=o.Question_group||'Unknown'; grpCounts[g]=(grpCounts[g]||0)+1; });
+  const sorted=Object.entries(grpCounts).sort((a,b)=>b[1]-a[1]).slice(0,12);
+  const ctx=document.getElementById('chart-obs-groups')?.getContext('2d');
+  if(!ctx) return;
+  if(_obsChartGroups) _obsChartGroups.destroy();
+  _obsChartGroups=new Chart(ctx,{
+    type:'bar',
+    data:{labels:sorted.map(([k])=>k.length>28?k.slice(0,28)+'…':k),datasets:[{
+      label:'Observations',data:sorted.map(([,v])=>v),
+      backgroundColor:'#0053e2',borderRadius:4
+    }]},
+    options:{
+      responsive:true,maintainAspectRatio:false,indexAxis:'y',
+      plugins:{legend:{display:false}},
+      scales:{
+        x:{ticks:{font:{size:10}},grid:{color:'#f0f0f0'}},
+        y:{ticks:{font:{size:9}}}
+      }
+    }
+  });
+}
+
+function _renderObsTrendChart(obs) {
+  const weekMap={};
+  obs.forEach(o=>{
+    const yr=o.wmt_year_nbr; const wk=o.wmt_week_of_year_nbr;
+    if(!yr||!wk) return;
+    const key=`FY${yr}-W${String(wk).padStart(2,'0')}`;
+    weekMap[key]=(weekMap[key]||0)+1;
+  });
+  const labels=Object.keys(weekMap).sort().slice(-26);
+  const ctx=document.getElementById('chart-obs-trend')?.getContext('2d');
+  if(!ctx) return;
+  if(_obsChartTrend) _obsChartTrend.destroy();
+  _obsChartTrend=new Chart(ctx,{
+    type:'bar',
+    data:{labels,datasets:[{label:'Observations',data:labels.map(k=>weekMap[k]||0),backgroundColor:'#ffc220',borderRadius:3}]},
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false}},
+      scales:{
+        y:{ticks:{font:{size:10}},grid:{color:'#f0f0f0'}},
+        x:{ticks:{font:{size:8},maxRotation:45}}
+      }
+    }
+  });
+}
+
+function _renderObsTable(obs) {
+  const tbody=document.getElementById('obs-table-body');
+  if(!tbody) return;
+  tbody.innerHTML=obs.slice(0,200).map((o,i)=>`
+    <tr class="hover:bg-wmt-gray10 ${i%2===0?'':'bg-gray-50/50'}">
+      <td class="px-3 py-2 whitespace-nowrap">${o.Date||'—'}</td>
+      <td class="px-3 py-2">${o.tech_name||'—'}</td>
+      <td class="px-3 py-2 text-wmt-gray100">${o.Org_Role||'—'}</td>
+      <td class="px-3 py-2 font-mono">${o.Store||'—'}</td>
+      <td class="px-3 py-2">${o.FM_Sr_Director||'—'}</td>
+      <td class="px-3 py-2">${o.Direct_Manager||'—'}</td>
+      <td class="px-3 py-2">${o.Question_group||'—'}</td>
+      <td class="px-3 py-2 max-w-[200px] truncate" title="${o.question||''}">${(o.question||'—').slice(0,60)}</td>
+      <td class="px-3 py-2">${o.answer||'—'}</td>
+      <td class="px-3 py-2">${o.status||'—'}</td>
+    </tr>`).join('');
+}
+
+function exportObsTable() {
+  const hdr='Date,Technician,Role,Store,Sr Director,Manager,Group,Question,Answer,Status\n';
+  const csv=hdr+(OBSERVATIONS||[]).map(o=>[
+    o.Date,o.tech_name,o.Org_Role,o.Store,o.FM_Sr_Director,o.Direct_Manager,
+    o.Question_group,(o.question||'').replace(/,/g,';'),o.answer,o.status
+  ].join(',')).join('\n');
+  const a=document.createElement('a');
+  a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv);
+  a.download='hvacr_field_observations.csv';
+  a.click();
+}
+</script>

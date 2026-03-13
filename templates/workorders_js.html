@@ -1,0 +1,218 @@
+<!-- ====== WO PERFORMANCE JS ====== -->
+<script>
+let _woChartFcr=null, _woChartSla=null, _woChartRepeat=null;
+
+function render_workorders() {
+  const srFilt = document.getElementById('wo-sr-filter')?.value||'';
+
+  // Build store-level WO metrics
+  const byStore = {};
+  (TRAINING_WOS||[]).forEach(w => {
+    const sn = String(w.store_nbr||'');
+    if (!sn) return;
+    if (BANNER_FILTER==='walmart' && w.store_type==='sams') return;
+    if (BANNER_FILTER==='sams'    && w.store_type!=='sams') return;
+    if (srFilt && w.sr_director !== srFilt) return;
+    if (!byStore[sn]) byStore[sn]={
+      sn, sr:w.sr_director||'', dir:w.director||'', rm:w.rm||'',
+      total:0, fcr_y:0, fcr_n:0, sla_y:0, sla_n:0,
+      trip_sum:0, trip_n:0, probs:{}
+    };
+    const s=byStore[sn];
+    s.total++;
+    const fcr=(w.first_time_fix_compliance||'').toUpperCase();
+    if(fcr==='Y') s.fcr_y++; else if(fcr==='N') s.fcr_n++;
+    const sla=(w.sla_repair_compliance||'').toUpperCase();
+    if(sla==='Y') s.sla_y++; else if(sla==='N') s.sla_n++;
+    const tr=parseFloat(w.trip_count||0);
+    if(tr>0){s.trip_sum+=tr; s.trip_n++;}
+    const prob=(w.problem_code_desc||'Unknown').trim();
+    s.probs[prob]=(s.probs[prob]||0)+1;
+  });
+
+  // Populate Sr Director filter
+  const srSel=document.getElementById('wo-sr-filter');
+  if(srSel && srSel.options.length<=1){
+    const srs=[...new Set(Object.values(byStore).map(s=>s.sr).filter(Boolean))].sort();
+    srs.forEach(s=>{const o=document.createElement('option');o.value=s;o.textContent=s;srSel.appendChild(o);});
+  }
+
+  const stores = Object.values(byStore).map(s => ({
+    ...s,
+    fcrRate: (s.fcr_y+s.fcr_n)>0 ? s.fcr_y/(s.fcr_y+s.fcr_n) : null,
+    slaRate: (s.sla_y+s.sla_n)>0 ? s.sla_y/(s.sla_y+s.sla_n) : null,
+    avgTrips: s.trip_n>0 ? s.trip_sum/s.trip_n : null,
+    topProb: Object.entries(s.probs).sort((a,b)=>b[1]-a[1])[0]?.[0]||'',
+    repeatWos: Object.values(s.probs).filter(n=>n>1).reduce((a,b)=>a+b,0),
+  })).sort((a,b)=>(a.fcrRate??1)-(b.fcrRate??1));
+
+  _renderWoKpis(stores);
+  _renderFcrByProbChart();
+  _renderSlaBySrChart(stores);
+  _renderRepeatCodesChart();
+  _renderWoTable(stores);
+}
+
+function _renderWoKpis(stores) {
+  const total = stores.reduce((a,s)=>a+s.total,0);
+  const fcrArr = stores.filter(s=>s.fcrRate!=null).map(s=>s.fcrRate);
+  const slaArr = stores.filter(s=>s.slaRate!=null).map(s=>s.slaRate);
+  const avgFcr = fcrArr.length ? fcrArr.reduce((a,b)=>a+b)/fcrArr.length : null;
+  const avgSla = slaArr.length ? slaArr.reduce((a,b)=>a+b)/slaArr.length : null;
+  const avgTrip = stores.filter(s=>s.avgTrips!=null).map(s=>s.avgTrips);
+  const avgT = avgTrip.length ? avgTrip.reduce((a,b)=>a+b)/avgTrip.length : null;
+  const cards=[
+    {label:'Total HVACR WOs', val:fmt(total), sub:'last 18 months', color:'text-wmt-blue'},
+    {label:'Avg FCR Rate', val:avgFcr!=null?pct(avgFcr*100):'—', sub:'first-call resolution', color:avgFcr!=null&&avgFcr<0.7?'text-wmt-red':'text-green-700'},
+    {label:'Avg SLA Compliance', val:avgSla!=null?pct(avgSla*100):'—', sub:'repair on time', color:avgSla!=null&&avgSla<0.7?'text-wmt-red':'text-green-700'},
+    {label:'Avg Trips per WO', val:avgT!=null?avgT.toFixed(2):'—', sub:'1.0 = perfect', color:avgT!=null&&avgT>1.5?'text-wmt-red':'text-green-700'},
+  ];
+  document.getElementById('wo-kpis').innerHTML=cards.map(c=>`
+    <div class="kpi-card bg-white rounded-xl shadow p-4">
+      <div class="text-xs text-wmt-gray100 mb-1">${c.label}</div>
+      <div class="text-2xl font-black ${c.color}">${c.val}</div>
+      <div class="text-xs text-wmt-gray100 mt-1">${c.sub}</div>
+    </div>`).join('');
+}
+
+function _renderFcrByProbChart() {
+  const probMap={};
+  (TRAINING_WOS||[]).forEach(w=>{
+    const prob=(w.problem_code_desc||'Unknown').trim();
+    if(!probMap[prob]) probMap[prob]={y:0,n:0};
+    const fcr=(w.first_time_fix_compliance||'').toUpperCase();
+    if(fcr==='Y') probMap[prob].y++;
+    else if(fcr==='N') probMap[prob].n++;
+  });
+  // Top 15 by volume with FCR data
+  const sorted=Object.entries(probMap)
+    .filter(([,v])=>(v.y+v.n)>=5)
+    .map(([k,v])=>({label:k, total:v.y+v.n, rate:v.y/(v.y+v.n)}))
+    .sort((a,b)=>a.rate-b.rate).slice(0,15);
+  const labels=sorted.map(x=>x.label.length>30?x.label.slice(0,30)+'…':x.label);
+  const data=sorted.map(x=>+(x.rate*100).toFixed(1));
+  const colors=data.map(v=>v<70?'#ea1100':v<85?'#ffc220':'#2a8703');
+  const ctx=document.getElementById('chart-fcr-prob')?.getContext('2d');
+  if(!ctx) return;
+  if(_woChartFcr) _woChartFcr.destroy();
+  _woChartFcr=new Chart(ctx,{
+    type:'bar',
+    data:{labels,datasets:[{label:'FCR %',data,backgroundColor:colors,borderRadius:3}]},
+    options:{
+      responsive:true,maintainAspectRatio:false,indexAxis:'y',
+      plugins:{legend:{display:false}},
+      scales:{
+        x:{min:0,max:100,ticks:{callback:v=>v+'%',font:{size:10}},grid:{color:'#f0f0f0'}},
+        y:{ticks:{font:{size:8}}}
+      }
+    }
+  });
+}
+
+function _renderSlaBySrChart(stores) {
+  const srMap={};
+  stores.forEach(s=>{
+    if(!s.sr) return;
+    if(!srMap[s.sr]) srMap[s.sr]=[];
+    if(s.slaRate!=null) srMap[s.sr].push(s.slaRate);
+  });
+  const labels=Object.keys(srMap).sort((a,b)=>{
+    const av=srMap[a].reduce((x,y)=>x+y,0)/(srMap[a].length||1);
+    const bv=srMap[b].reduce((x,y)=>x+y,0)/(srMap[b].length||1);
+    return av-bv;
+  });
+  const data=labels.map(l=>{
+    const arr=srMap[l]; return arr.length?(arr.reduce((a,b)=>a+b)/arr.length*100).toFixed(1):null;
+  });
+  const colors=data.map(v=>v<70?'#ea1100':v<85?'#ffc220':'#2a8703');
+  const ctx=document.getElementById('chart-sla-sr')?.getContext('2d');
+  if(!ctx) return;
+  if(_woChartSla) _woChartSla.destroy();
+  _woChartSla=new Chart(ctx,{
+    type:'bar',
+    data:{labels,datasets:[{label:'SLA %',data,backgroundColor:colors,borderRadius:3}]},
+    options:{
+      responsive:true,maintainAspectRatio:false,indexAxis:'y',
+      plugins:{legend:{display:false}},
+      scales:{
+        x:{min:0,max:100,ticks:{callback:v=>v+'%',font:{size:10}},grid:{color:'#f0f0f0'}},
+        y:{ticks:{font:{size:9},callback:v=>v.length>22?v.slice(0,22)+'…':v}}
+      }
+    }
+  });
+}
+
+function _renderRepeatCodesChart() {
+  const storeProbs={};
+  (TRAINING_WOS||[]).forEach(w=>{
+    const sn=String(w.store_nbr||'');
+    const prob=(w.problem_code_desc||'Unknown').trim();
+    if(!storeProbs[sn]) storeProbs[sn]={};
+    storeProbs[sn][prob]=(storeProbs[sn][prob]||0)+1;
+  });
+  const repeatByCode={};
+  Object.values(storeProbs).forEach(probs=>{
+    Object.entries(probs).forEach(([code,n])=>{
+      if(n>1) repeatByCode[code]=(repeatByCode[code]||0)+n;
+    });
+  });
+  const sorted=Object.entries(repeatByCode).sort((a,b)=>b[1]-a[1]).slice(0,20);
+  const labels=sorted.map(([k])=>k.length>35?k.slice(0,35)+'…':k);
+  const data=sorted.map(([,v])=>v);
+  const ctx=document.getElementById('chart-repeat-codes')?.getContext('2d');
+  if(!ctx) return;
+  if(_woChartRepeat) _woChartRepeat.destroy();
+  _woChartRepeat=new Chart(ctx,{
+    type:'bar',
+    data:{labels,datasets:[{label:'Repeat WOs',data,backgroundColor:'#0053e2',borderRadius:3}]},
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false}},
+      scales:{
+        y:{ticks:{font:{size:10}},grid:{color:'#f0f0f0'}},
+        x:{ticks:{font:{size:8},maxRotation:45}}
+      }
+    }
+  });
+}
+
+function _renderWoTable(stores) {
+  const tbody=document.getElementById('wo-table-body');
+  if(!tbody) return;
+  tbody.innerHTML=stores.slice(0,100).map((s,i)=>`
+    <tr class="hover:bg-wmt-gray10 ${i%2===0?'':'bg-gray-50/50'}">
+      <td class="px-3 py-2 font-mono font-semibold">${s.sn}</td>
+      <td class="px-3 py-2">${s.sr||'—'}</td>
+      <td class="px-3 py-2">${s.dir||'—'}</td>
+      <td class="px-3 py-2 text-right">${fmt(s.total)}</td>
+      <td class="px-3 py-2 text-right ${s.fcrRate!=null&&s.fcrRate<0.7?'text-wmt-red font-semibold':''}">${s.fcrRate!=null?pct(s.fcrRate*100):'—'}</td>
+      <td class="px-3 py-2 text-right ${s.slaRate!=null&&s.slaRate<0.7?'text-wmt-red font-semibold':''}">${s.slaRate!=null?pct(s.slaRate*100):'—'}</td>
+      <td class="px-3 py-2 text-right ${s.avgTrips!=null&&s.avgTrips>1.5?'text-yellow-600 font-semibold':''}">${s.avgTrips!=null?s.avgTrips.toFixed(2):'—'}</td>
+      <td class="px-3 py-2 text-right">${fmt(s.repeatWos)}</td>
+      <td class="px-3 py-2 text-wmt-gray100 max-w-[160px] truncate" title="${s.topProb}">${s.topProb||'—'}</td>
+    </tr>`).join('');
+}
+
+function exportWoTable() {
+  const stores={};
+  (TRAINING_WOS||[]).forEach(w=>{
+    const sn=String(w.store_nbr||'');
+    if(!stores[sn]) stores[sn]={sn,sr:w.sr_director||'',dir:w.director||'',total:0,fcr_y:0,fcr_n:0,sla_y:0,sla_n:0};
+    const s=stores[sn]; s.total++;
+    if((w.first_time_fix_compliance||'').toUpperCase()==='Y') s.fcr_y++;
+    if((w.first_time_fix_compliance||'').toUpperCase()==='N') s.fcr_n++;
+    if((w.sla_repair_compliance||'').toUpperCase()==='Y') s.sla_y++;
+    if((w.sla_repair_compliance||'').toUpperCase()==='N') s.sla_n++;
+  });
+  const hdr='Store,Sr Director,Director,Total WOs,FCR %,SLA %\n';
+  const csv=hdr+Object.values(stores).map(s=>[
+    s.sn,s.sr,s.dir,s.total,
+    (s.fcr_y+s.fcr_n)>0?((s.fcr_y/(s.fcr_y+s.fcr_n))*100).toFixed(1):'',
+    (s.sla_y+s.sla_n)>0?((s.sla_y/(s.sla_y+s.sla_n))*100).toFixed(1):'',
+  ].join(',')).join('\n');
+  const a=document.createElement('a');
+  a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv);
+  a.download='hvacr_wo_performance.csv';
+  a.click();
+}
+</script>

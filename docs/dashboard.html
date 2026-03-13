@@ -1,0 +1,2007 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>HVACR Training Dashboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            wmt: {
+              blue:    '#0053e2',
+              spark:   '#ffc220',
+              red:     '#ea1100',
+              green:   '#2a8703',
+              warn:    '#995213',
+              warnbg:  '#fff8ec',
+              gray10:  '#f5f5f5',
+              gray50:  '#c2c2c2',
+              gray100: '#919191',
+              gray160: '#2e2f32',
+            }
+          }
+        }
+      }
+    };
+  </script>
+  <style>
+    /* Slim scrollbar */
+    ::-webkit-scrollbar { width: 4px; height: 4px; }
+    ::-webkit-scrollbar-thumb { background: #c2c2c2; border-radius: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+
+    /* Tab active state */
+    .tab-btn.active {
+      border-bottom: 3px solid #0053e2;
+      color: #0053e2;
+      font-weight: 600;
+    }
+    /* Score pill colours */
+    .score-high  { background:#fde8e7; color:#ea1100; }
+    .score-med   { background:#fff8ec; color:#995213; }
+    .score-low   { background:#e8f5e0; color:#2a8703; }
+    .score-none  { background:#f5f5f5; color:#919191; }
+
+    /* Card hover lift */
+    .kpi-card { transition: transform .15s, box-shadow .15s; }
+    .kpi-card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,.1); }
+
+    /* Sticky table headers */
+    .sticky-head th { position: sticky; top: 0; z-index: 10; }
+
+    /* Banner fade */
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+  </style>
+</head>
+<body class="bg-wmt-gray10 text-wmt-gray160 font-sans antialiased">
+
+<!-- Global state -->
+<script>
+  // Banner filter: 'all' | 'walmart' | 'sams'
+  let BANNER_FILTER = 'all';
+  // Active tab
+  let ACTIVE_TAB = 'overview';
+
+  function setTab(id) {
+    ACTIVE_TAB = id;
+    document.querySelectorAll('.tab-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.tab === id);
+    });
+    document.querySelectorAll('.tab-panel').forEach(p => {
+      p.classList.toggle('active', p.id === 'tab-' + id);
+    });
+    // Notify each tab's render function if present
+    const fn = window['render_' + id];
+    if (typeof fn === 'function') fn();
+  }
+
+  function setBanner(v) {
+    BANNER_FILTER = v;
+    document.querySelectorAll('.banner-btn').forEach(b => {
+      b.classList.toggle('bg-wmt-blue', b.dataset.banner === v);
+      b.classList.toggle('text-white', b.dataset.banner === v);
+      b.classList.toggle('bg-white', b.dataset.banner !== v);
+      b.classList.toggle('text-wmt-gray160', b.dataset.banner !== v);
+    });
+    // Re-render active tab
+    const fn = window['render_' + ACTIVE_TAB];
+    if (typeof fn === 'function') fn();
+  }
+
+  // Utility: format numbers
+  function fmt(n, dec=0) {
+    if (n == null || isNaN(n)) return '—';
+    return Number(n).toLocaleString('en-US', {minimumFractionDigits:dec, maximumFractionDigits:dec});
+  }
+  function pct(n, dec=1) {
+    if (n == null || isNaN(n)) return '—';
+    return Number(n).toFixed(dec) + '%';
+  }
+  function scorePill(score) {
+    if (score == null || isNaN(score)) return `<span class="score-none rounded px-2 py-0.5 text-xs font-bold">N/A</span>`;
+    const cls = score >= 70 ? 'score-high' : score >= 40 ? 'score-med' : 'score-low';
+    return `<span class="${cls} rounded px-2 py-0.5 text-xs font-bold">${Math.round(score)}</span>`;
+  }
+</script>
+
+<script>
+const DASHBOARD_UPDATED = "2026-03-13 07:55";
+const TRAINING_WOS = [];
+const EXAM_REG = [];
+const TECH_ALIGNMENT = [];
+const TECH_STORES = [];
+const OBSERVATIONS = [];
+const EPA_CERTS = [];
+const TOP_GUN = [];
+</script>
+
+<!-- ====== TOP HEADER ====== -->
+<header class="bg-wmt-blue shadow-md sticky top-0 z-50">
+  <div class="max-w-screen-2xl mx-auto px-4 py-2 flex items-center justify-between gap-4 flex-wrap">
+
+    <!-- Logo + Title -->
+    <div class="flex items-center gap-3">
+      <div class="w-8 h-8 rounded-full bg-wmt-spark flex items-center justify-center">
+        <span class="text-wmt-gray160 font-black text-sm">WM</span>
+      </div>
+      <div>
+        <div class="text-white font-bold text-base leading-tight">HVACR Training Dashboard</div>
+        <div class="text-blue-200 text-xs" id="hdr-updated">Loading…</div>
+      </div>
+    </div>
+
+    <!-- Banner toggle -->
+    <div class="flex rounded overflow-hidden border border-blue-400 text-sm">
+      <button class="banner-btn px-3 py-1 bg-wmt-blue text-white" data-banner="all"
+              onclick="setBanner('all')">All</button>
+      <button class="banner-btn px-3 py-1 bg-white text-wmt-gray160" data-banner="walmart"
+              onclick="setBanner('walmart')">Walmart</button>
+      <button class="banner-btn px-3 py-1 bg-white text-wmt-gray160" data-banner="sams"
+              onclick="setBanner('sams')">Sam's</button>
+    </div>
+
+    <!-- Quick search -->
+    <div class="flex-1 min-w-[200px] max-w-xs">
+      <input id="global-search" type="text" placeholder="Search store, tech, manager…"
+             class="w-full rounded px-3 py-1.5 text-sm border border-blue-400 bg-blue-900
+                    text-white placeholder-blue-300 focus:outline-none focus:ring-2 focus:ring-wmt-spark"
+             oninput="onGlobalSearch(this.value)" />
+    </div>
+
+  </div>
+
+  <!-- Tab nav -->
+  <div class="bg-white border-b border-gray-200 overflow-x-auto">
+    <div class="max-w-screen-2xl mx-auto px-4 flex gap-1 text-sm whitespace-nowrap">
+      <button class="tab-btn active px-4 py-2.5 text-wmt-gray160 hover:text-wmt-blue transition-colors"
+              data-tab="overview" onclick="setTab('overview')">Overview</button>
+      <button class="tab-btn px-4 py-2.5 text-wmt-gray160 hover:text-wmt-blue transition-colors"
+              data-tab="technicians" onclick="setTab('technicians')">Technicians</button>
+      <button class="tab-btn px-4 py-2.5 text-wmt-gray160 hover:text-wmt-blue transition-colors"
+              data-tab="workorders" onclick="setTab('workorders')">WO Performance</button>
+      <button class="tab-btn px-4 py-2.5 text-wmt-gray160 hover:text-wmt-blue transition-colors"
+              data-tab="observations" onclick="setTab('observations')">Field Observations</button>
+      <button class="tab-btn px-4 py-2.5 text-wmt-gray160 hover:text-wmt-blue transition-colors"
+              data-tab="epa" onclick="setTab('epa')">EPA Certs</button>
+      <button class="tab-btn px-4 py-2.5 text-wmt-gray160 hover:text-wmt-blue transition-colors"
+              data-tab="topgun" onclick="setTab('topgun')">Top Gun</button>
+    </div>
+  </div>
+</header>
+
+<script>
+  // Initialize banner state
+  document.addEventListener('DOMContentLoaded', () => {
+    setBanner('all');
+    setTab('overview');
+  });
+</script>
+
+<!-- ====== OVERVIEW TAB ====== -->
+<div id="tab-overview" class="tab-panel active">
+  <div class="max-w-screen-2xl mx-auto px-4 py-5 space-y-6">
+
+    <!-- KPI Cards -->
+    <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4" id="overview-kpis"></div>
+
+    <!-- Insight Banner -->
+    <div id="overview-insight"
+         class="bg-blue-50 border border-blue-200 rounded-xl p-4 text-sm text-wmt-gray160">
+    </div>
+
+    <!-- Row: Training Gap by Sr Director + Exam Pass Trend -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+      <!-- Training gap bar chart -->
+      <div class="bg-white rounded-xl shadow p-4">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="font-semibold text-sm text-wmt-gray160">Training Need Score by Sr Director</h2>
+          <span class="text-xs text-wmt-gray100">Higher = more training needed</span>
+        </div>
+        <div style="height:280px;">
+          <canvas id="chart-sr-gap"></canvas>
+        </div>
+      </div>
+
+      <!-- Exam pass rate trend -->
+      <div class="bg-white rounded-xl shadow p-4">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="font-semibold text-sm text-wmt-gray160">Exam Pass Rate Trend (Rolling 12 Weeks)</h2>
+          <span class="text-xs text-wmt-gray100">By fiscal week</span>
+        </div>
+        <div style="height:280px;">
+          <canvas id="chart-exam-trend"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- Row: Bottom stores table + Training gap donut -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+      <!-- Bottom stores table (most training needed) -->
+      <div class="lg:col-span-2 bg-white rounded-xl shadow overflow-hidden">
+        <div class="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+          <h2 class="font-semibold text-sm">Stores Needing Most Training Attention</h2>
+          <div class="flex gap-2">
+            <select id="ov-sr-filter" onchange="render_overview()"
+                    class="text-xs border rounded px-2 py-1 text-wmt-gray160">
+              <option value="">All Sr Directors</option>
+            </select>
+            <button onclick="exportOverviewTable()"
+                    class="text-xs bg-wmt-blue text-white rounded px-2 py-1">↓ CSV</button>
+          </div>
+        </div>
+        <div class="overflow-auto max-h-72">
+          <table class="w-full text-xs sticky-head">
+            <thead class="bg-wmt-gray10 text-wmt-gray100 font-semibold">
+              <tr>
+                <th class="px-3 py-2 text-left">#</th>
+                <th class="px-3 py-2 text-left">Store</th>
+                <th class="px-3 py-2 text-left">Sr Director</th>
+                <th class="px-3 py-2 text-left">Director</th>
+                <th class="px-3 py-2 text-left">RM</th>
+                <th class="px-3 py-2 text-right">Gap Score</th>
+                <th class="px-3 py-2 text-right">FCR %</th>
+                <th class="px-3 py-2 text-right">SLA %</th>
+                <th class="px-3 py-2 text-right">Repeat %</th>
+                <th class="px-3 py-2 text-right">WOs</th>
+              </tr>
+            </thead>
+            <tbody id="overview-table-body" class="divide-y divide-gray-100"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Score distribution donut -->
+      <div class="bg-white rounded-xl shadow p-4">
+        <h2 class="font-semibold text-sm mb-3">Gap Score Distribution</h2>
+        <div style="height:200px;">
+          <canvas id="chart-score-dist"></canvas>
+        </div>
+        <div id="score-dist-legend" class="mt-3 space-y-1 text-xs"></div>
+      </div>
+    </div>
+
+    <!-- Director-level rollup table -->
+    <div class="bg-white rounded-xl shadow overflow-hidden">
+      <div class="px-4 py-3 border-b border-gray-100">
+        <h2 class="font-semibold text-sm">Director-Level Training Rollup</h2>
+      </div>
+      <div class="overflow-auto">
+        <table class="w-full text-xs sticky-head">
+          <thead class="bg-wmt-gray10 text-wmt-gray100 font-semibold">
+            <tr>
+              <th class="px-3 py-2 text-left">Sr Director</th>
+              <th class="px-3 py-2 text-left">Director</th>
+              <th class="px-3 py-2 text-right">Stores</th>
+              <th class="px-3 py-2 text-right">Gap Score</th>
+              <th class="px-3 py-2 text-right">FCR %</th>
+              <th class="px-3 py-2 text-right">SLA %</th>
+              <th class="px-3 py-2 text-right">Repeat %</th>
+              <th class="px-3 py-2 text-right">EPA Compliant</th>
+              <th class="px-3 py-2 text-right">Exam Pass %</th>
+              <th class="px-3 py-2 text-right">WOs (18mo)</th>
+            </tr>
+          </thead>
+          <tbody id="director-table-body" class="divide-y divide-gray-100"></tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ====== TECHNICIANS TAB ====== -->
+<div id="tab-technicians" class="tab-panel">
+  <div class="max-w-screen-2xl mx-auto px-4 py-5 space-y-6">
+
+    <!-- KPI row -->
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-4" id="tech-kpis"></div>
+
+    <!-- Row: Level distribution + Exam pass by type -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div class="bg-white rounded-xl shadow p-4">
+        <h2 class="font-semibold text-sm mb-3">Technician Level Distribution</h2>
+        <div style="height:250px;"><canvas id="chart-tech-levels"></canvas></div>
+      </div>
+      <div class="bg-white rounded-xl shadow p-4">
+        <h2 class="font-semibold text-sm mb-3">Exam Pass Rate by Test Type</h2>
+        <div style="height:250px;"><canvas id="chart-exam-by-type"></canvas></div>
+      </div>
+    </div>
+
+    <!-- Filters -->
+    <div class="bg-white rounded-xl shadow p-4">
+      <div class="flex flex-wrap gap-3 items-end">
+        <div>
+          <label class="text-xs text-wmt-gray100 block mb-1">Sr Director</label>
+          <select id="tech-sr-filter" onchange="render_technicians()"
+                  class="text-xs border rounded px-2 py-1.5 min-w-[160px]">
+            <option value="">All</option>
+          </select>
+        </div>
+        <div>
+          <label class="text-xs text-wmt-gray100 block mb-1">Tech Level</label>
+          <select id="tech-level-filter" onchange="render_technicians()"
+                  class="text-xs border rounded px-2 py-1.5">
+            <option value="">All Levels</option>
+          </select>
+        </div>
+        <div>
+          <label class="text-xs text-wmt-gray100 block mb-1">Exam Result</label>
+          <select id="tech-exam-filter" onchange="render_technicians()"
+                  class="text-xs border rounded px-2 py-1.5">
+            <option value="">All</option>
+            <option value="pass">Pass</option>
+            <option value="fail">Fail</option>
+            <option value="none">No Exam on File</option>
+          </select>
+        </div>
+        <button onclick="exportTechTable()"
+                class="text-xs bg-wmt-blue text-white rounded px-3 py-1.5">↓ CSV</button>
+      </div>
+    </div>
+
+    <!-- Tech roster table -->
+    <div class="bg-white rounded-xl shadow overflow-hidden">
+      <div class="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+        <h2 class="font-semibold text-sm">Technician Roster & Training Status</h2>
+        <span class="text-xs text-wmt-gray100" id="tech-count-label"></span>
+      </div>
+      <div class="overflow-auto max-h-[500px]">
+        <table class="w-full text-xs sticky-head">
+          <thead class="bg-wmt-gray10 text-wmt-gray100 font-semibold">
+            <tr>
+              <th class="px-3 py-2 text-left">Technician</th>
+              <th class="px-3 py-2 text-left">Level</th>
+              <th class="px-3 py-2 text-left">Role</th>
+              <th class="px-3 py-2 text-left">Home Store</th>
+              <th class="px-3 py-2 text-left">Sr Director</th>
+              <th class="px-3 py-2 text-right">Latest Exam</th>
+              <th class="px-3 py-2 text-right">Score</th>
+              <th class="px-3 py-2 text-right">Result</th>
+              <th class="px-3 py-2 text-right">Attempts</th>
+              <th class="px-3 py-2 text-right">EPA Valid</th>
+            </tr>
+          </thead>
+          <tbody id="tech-table-body" class="divide-y divide-gray-100"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- High-risk techs: failed or no exam -->
+    <div class="bg-white rounded-xl shadow overflow-hidden">
+      <div class="px-4 py-3 border-b border-gray-100">
+        <h2 class="font-semibold text-sm text-wmt-red">
+          ⚠️ High-Priority: Failed or No Exam on Record
+        </h2>
+      </div>
+      <div class="overflow-auto max-h-64">
+        <table class="w text-xs sticky-head">
+          <thead class="bg-red-50 text-wmt-red font-semibold">
+            <tr>
+              <th class="px-3 py-2 text-left">Technician</th>
+              <th class="px-3 py-2 text-left">Level</th>
+              <th class="px-3 py-2 text-left">Home Store</th>
+              <th class="px-3 py-2 text-left">Manager</th>
+              <th class="px-3 py-2 text-right">Issue</th>
+            </tr>
+          </thead>
+          <tbody id="high-risk-tech-body" class="divide-y divide-red-50"></tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ====== WO PERFORMANCE TAB ====== -->
+<div id="tab-workorders" class="tab-panel">
+  <div class="max-w-screen-2xl mx-auto px-4 py-5 space-y-6">
+
+    <!-- KPI row -->
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-4" id="wo-kpis"></div>
+
+    <!-- Row: FCR by Problem Code + SLA by Sr Director -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div class="bg-white rounded-xl shadow p-4">
+        <h2 class="font-semibold text-sm mb-3">First-Call Resolution by Problem Code</h2>
+        <p class="text-xs text-wmt-gray100 mb-2">Lower FCR = higher training signal for that problem category</p>
+        <div style="height:300px;"><canvas id="chart-fcr-prob"></canvas></div>
+      </div>
+      <div class="bg-white rounded-xl shadow p-4">
+        <h2 class="font-semibold text-sm mb-3">SLA Compliance by Sr Director</h2>
+        <div style="height:300px;"><canvas id="chart-sla-sr"></canvas></div>
+      </div>
+    </div>
+
+    <!-- Repeat WO heatmap by problem code -->
+    <div class="bg-white rounded-xl shadow p-4">
+      <h2 class="font-semibold text-sm mb-3">Top Repeat Problem Codes (by Volume)</h2>
+      <p class="text-xs text-wmt-gray100 mb-3">Problem codes that repeat most within the same store — strong training signal</p>
+      <div style="height:260px;"><canvas id="chart-repeat-codes"></canvas></div>
+    </div>
+
+    <!-- WO detail table -->
+    <div class="bg-white rounded-xl shadow overflow-hidden">
+      <div class="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+        <h2 class="font-semibold text-sm">WO Performance by Store</h2>
+        <div class="flex gap-2">
+          <select id="wo-sr-filter" onchange="render_workorders()"
+                  class="text-xs border rounded px-2 py-1">
+            <option value="">All Sr Directors</option>
+          </select>
+          <button onclick="exportWoTable()"
+                  class="text-xs bg-wmt-blue text-white rounded px-2 py-1">↓ CSV</button>
+        </div>
+      </div>
+      <div class="overflow-auto max-h-96">
+        <table class="w-full text-xs sticky-head">
+          <thead class="bg-wmt-gray10 text-wmt-gray100 font-semibold">
+            <tr>
+              <th class="px-3 py-2 text-left">Store</th>
+              <th class="px-3 py-2 text-left">Sr Director</th>
+              <th class="px-3 py-2 text-left">Director</th>
+              <th class="px-3 py-2 text-right">Total WOs</th>
+              <th class="px-3 py-2 text-right">FCR %</th>
+              <th class="px-3 py-2 text-right">SLA %</th>
+              <th class="px-3 py-2 text-right">Avg Trips</th>
+              <th class="px-3 py-2 text-right">Repeat WOs</th>
+              <th class="px-3 py-2 text-right">Top Problem</th>
+            </tr>
+          </thead>
+          <tbody id="wo-table-body" class="divide-y divide-gray-100"></tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ====== FIELD OBSERVATIONS TAB ====== -->
+<div id="tab-observations" class="tab-panel">
+  <div class="max-w-screen-2xl mx-auto px-4 py-5 space-y-6">
+
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-4" id="obs-kpis"></div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div class="bg-white rounded-xl shadow p-4">
+        <h2 class="font-semibold text-sm mb-3">Observations by Question Group</h2>
+        <div style="height:280px;"><canvas id="chart-obs-groups"></canvas></div>
+      </div>
+      <div class="bg-white rounded-xl shadow p-4">
+        <h2 class="font-semibold text-sm mb-3">Observation Volume by Fiscal Week</h2>
+        <div style="height:280px;"><canvas id="chart-obs-trend"></canvas></div>
+      </div>
+    </div>
+
+    <!-- Filters -->
+    <div class="bg-white rounded-xl shadow p-4 flex flex-wrap gap-3 items-end">
+      <div>
+        <label class="text-xs text-wmt-gray100 block mb-1">Sr Director</label>
+        <select id="obs-sr-filter" onchange="render_observations()"
+                class="text-xs border rounded px-2 py-1.5 min-w-[160px]">
+          <option value="">All</option>
+        </select>
+      </div>
+      <div>
+        <label class="text-xs text-wmt-gray100 block mb-1">Question Group</label>
+        <select id="obs-group-filter" onchange="render_observations()"
+                class="text-xs border rounded px-2 py-1.5 min-w-[160px]">
+          <option value="">All Groups</option>
+        </select>
+      </div>
+      <button onclick="exportObsTable()" class="text-xs bg-wmt-blue text-white rounded px-3 py-1.5">↓ CSV</button>
+    </div>
+
+    <div class="bg-white rounded-xl shadow overflow-hidden">
+      <div class="px-4 py-3 border-b border-gray-100">
+        <h2 class="font-semibold text-sm">Field Observation Detail</h2>
+      </div>
+      <div class="overflow-auto max-h-96">
+        <table class="w-full text-xs sticky-head">
+          <thead class="bg-wmt-gray10 text-wmt-gray100 font-semibold">
+            <tr>
+              <th class="px-3 py-2 text-left">Date</th>
+              <th class="px-3 py-2 text-left">Technician</th>
+              <th class="px-3 py-2 text-left">Role</th>
+              <th class="px-3 py-2 text-left">Store</th>
+              <th class="px-3 py-2 text-left">Sr Director</th>
+              <th class="px-3 py-2 text-left">Manager</th>
+              <th class="px-3 py-2 text-left">Group</th>
+              <th class="px-3 py-2 text-left">Question</th>
+              <th class="px-3 py-2 text-left">Answer</th>
+              <th class="px-3 py-2 text-left">Status</th>
+            </tr>
+          </thead>
+          <tbody id="obs-table-body" class="divide-y divide-gray-100"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ====== EPA CERTS TAB ====== -->
+<div id="tab-epa" class="tab-panel">
+  <div class="max-w-screen-2xl mx-auto px-4 py-5 space-y-6">
+
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-4" id="epa-kpis"></div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div class="bg-white rounded-xl shadow p-4">
+        <h2 class="font-semibold text-sm mb-3">Cert Status Breakdown</h2>
+        <div style="height:260px;"><canvas id="chart-epa-status"></canvas></div>
+      </div>
+      <div class="bg-white rounded-xl shadow p-4">
+        <h2 class="font-semibold text-sm mb-3">License Type Distribution</h2>
+        <div style="height:260px;"><canvas id="chart-epa-types"></canvas></div>
+      </div>
+    </div>
+
+    <!-- Expiring Soon alert -->
+    <div class="bg-amber-50 border border-amber-200 rounded-xl p-4">
+      <h2 class="font-semibold text-sm text-yellow-700 mb-2">⚠️ Expiring Within 90 Days</h2>
+      <div id="epa-expiring-list" class="text-xs text-wmt-gray160 space-y-1"></div>
+    </div>
+
+    <!-- Filters + table -->
+    <div class="bg-white rounded-xl shadow overflow-hidden">
+      <div class="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+        <h2 class="font-semibold text-sm">EPA Certification Registry</h2>
+        <div class="flex gap-2">
+          <select id="epa-status-filter" onchange="render_epa()"
+                  class="text-xs border rounded px-2 py-1">
+            <option value="">All Statuses</option>
+            <option value="valid">Valid</option>
+            <option value="expired">Expired</option>
+            <option value="expiring">Expiring (90d)</option>
+          </select>
+          <button onclick="exportEpaTable()" class="text-xs bg-wmt-blue text-white rounded px-2 py-1">↓ CSV</button>
+        </div>
+      </div>
+      <div class="overflow-auto max-h-[500px]">
+        <table class="w-full text-xs sticky-head">
+          <thead class="bg-wmt-gray10 text-wmt-gray100 font-semibold">
+            <tr>
+              <th class="px-3 py-2 text-left">Name</th>
+              <th class="px-3 py-2 text-left">Role</th>
+              <th class="px-3 py-2 text-left">Status</th>
+              <th class="px-3 py-2 text-left">License Category</th>
+              <th class="px-3 py-2 text-left">License Type</th>
+              <th class="px-3 py-2 text-left">License #</th>
+              <th class="px-3 py-2 text-right">Issue Date</th>
+              <th class="px-3 py-2 text-right">Expiry Date</th>
+              <th class="px-3 py-2 text-right">Verified</th>
+              <th class="px-3 py-2 text-right">Cert Status</th>
+            </tr>
+          </thead>
+          <tbody id="epa-table-body" class="divide-y divide-gray-100"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ====== TOP GUN TAB ====== -->
+<div id="tab-topgun" class="tab-panel">
+  <div class="max-w-screen-2xl mx-auto px-4 py-5 space-y-6">
+
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-4" id="tg-kpis"></div>
+
+    <!-- Before / After charts -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div class="bg-white rounded-xl shadow p-4">
+        <h2 class="font-semibold text-sm mb-3">WO Reduction: Before vs After Top Gun</h2>
+        <div style="height:280px;"><canvas id="chart-tg-wo"></canvas></div>
+      </div>
+      <div class="bg-white rounded-xl shadow p-4">
+        <h2 class="font-semibold text-sm mb-3">Time-in-Target: Before vs After Top Gun</h2>
+        <div style="height:280px;"><canvas id="chart-tg-tnt"></canvas></div>
+      </div>
+    </div>
+
+    <!-- Problem code breakdown -->
+    <div class="bg-white rounded-xl shadow p-4">
+      <h2 class="font-semibold text-sm mb-3">Top Gun Engagements by Problem Code</h2>
+      <div style="height:240px;"><canvas id="chart-tg-codes"></canvas></div>
+    </div>
+
+    <!-- Top Gun detail table -->
+    <div class="bg-white rounded-xl shadow overflow-hidden">
+      <div class="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+        <h2 class="font-semibold text-sm">Top Gun Engagement Log</h2>
+        <button onclick="exportTopGunTable()" class="text-xs bg-wmt-blue text-white rounded px-2 py-1">↓ CSV</button>
+      </div>
+      <div class="overflow-auto max-h-[500px]">
+        <table class="w-full text-xs sticky-head">
+          <thead class="bg-wmt-gray10 text-wmt-gray100 font-semibold">
+            <tr>
+              <th class="px-3 py-2 text-left">Store</th>
+              <th class="px-3 py-2 text-left">Sr Director</th>
+              <th class="px-3 py-2 text-left">Director</th>
+              <th class="px-3 py-2 text-left">RM</th>
+              <th class="px-3 py-2 text-left">Problem Code</th>
+              <th class="px-3 py-2 text-right">Call Date</th>
+              <th class="px-3 py-2 text-right">Duration (d)</th>
+              <th class="px-3 py-2 text-right">WOs Before</th>
+              <th class="px-3 py-2 text-right">WOs After</th>
+              <th class="px-3 py-2 text-right">WO Reduction</th>
+              <th class="px-3 py-2 text-right">TnT Before</th>
+              <th class="px-3 py-2 text-right">TnT After</th>
+              <th class="px-3 py-2 text-right">TnT Δ</th>
+              <th class="px-3 py-2 text-right">Status</th>
+            </tr>
+          </thead>
+          <tbody id="tg-table-body" class="divide-y divide-gray-100"></tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ====== OVERVIEW JS ====== -->
+<script>
+// ── Training Gap Score Engine ───────────────────────────────────────────
+//
+// Score 0-100 per store (higher = more training needed)
+// Weights: FCR(40%) + SLA(20%) + Repeat WO(20%) + AvgTrips(10%) + EPA(10%)
+//
+
+let _storeScores = null;   // cached store-level scores
+let _orgScores   = null;   // cached director-level rollup
+
+function _computeStoreScores() {
+  if (_storeScores) return _storeScores;
+
+  // Build EPA compliance lookup by store (from TECH_STORES + EPA_CERTS)
+  const epaValidIds = new Set();
+  const today = new Date();
+  (EPA_CERTS || []).forEach(c => {
+    if (!c.expiry_date || c.user_status !== 'Active') return;
+    const exp = new Date(c.expiry_date);
+    if (exp > today) epaValidIds.add(String(c.user_id || '').toLowerCase());
+  });
+
+  // Tech EPA compliance by store
+  const storeEpaTotal  = {};
+  const storeEpaValid  = {};
+  (TECH_STORES || []).forEach(ts => {
+    const sn = String(ts.store_nbr || '');
+    if (!sn) return;
+    storeEpaTotal[sn] = (storeEpaTotal[sn] || 0) + 1;
+    const uid = String(ts.user_id || '').toLowerCase();
+    if (epaValidIds.has(uid)) storeEpaValid[sn] = (storeEpaValid[sn] || 0) + 1;
+  });
+
+  // WO metrics per store
+  const byStore = {};
+  (TRAINING_WOS || []).forEach(w => {
+    const sn = String(w.store_nbr || '');
+    if (!sn) return;
+    // Banner filter
+    if (BANNER_FILTER === 'walmart' && w.store_type === 'sams') return;
+    if (BANNER_FILTER === 'sams'    && w.store_type !== 'sams') return;
+
+    if (!byStore[sn]) byStore[sn] = {
+      sn, sr: w.sr_director||'', dir: w.director||'', rm: w.rm||'',
+      store_type: w.store_type||'',
+      fcr_total:0, fcr_fail:0,
+      sla_total:0, sla_fail:0,
+      trip_sum:0,  trip_count_n:0,
+      wo_total:0,
+      prob_counts: {},
+    };
+    const s = byStore[sn];
+    s.wo_total++;
+
+    // FCR
+    const fcr = (w.first_time_fix_compliance||'').toUpperCase();
+    if (fcr === 'Y' || fcr === 'N') { s.fcr_total++; if (fcr === 'N') s.fcr_fail++; }
+
+    // SLA
+    const sla = (w.sla_repair_compliance||'').toUpperCase();
+    if (sla === 'Y' || sla === 'N') { s.sla_total++; if (sla === 'N') s.sla_fail++; }
+
+    // Trips
+    const trips = parseFloat(w.trip_count || 0);
+    if (trips > 0) { s.trip_sum += trips; s.trip_count_n++; }
+
+    // Repeat WO tracking by problem code
+    const prob = (w.problem_code_desc || 'Unknown').trim();
+    s.prob_counts[prob] = (s.prob_counts[prob] || 0) + 1;
+  });
+
+  // Compute scores
+  _storeScores = {};
+  Object.values(byStore).forEach(s => {
+    const fcrRate   = s.fcr_total  > 0 ? s.fcr_fail / s.fcr_total  : null;
+    const slaRate   = s.sla_total  > 0 ? s.sla_fail / s.sla_total  : null;
+    const avgTrips  = s.trip_count_n > 0 ? s.trip_sum / s.trip_count_n : null;
+    // Repeat: % of WOs that are a repeat problem code (count >1 for that store)
+    const repeatProbs = Object.values(s.prob_counts).filter(n => n > 1);
+    const repeatWos  = repeatProbs.reduce((a, n) => a + n, 0);
+    const repeatRate = s.wo_total > 0 ? repeatWos / s.wo_total : null;
+    // EPA
+    const epaTotal = storeEpaTotal[s.sn] || 0;
+    const epaValid = storeEpaValid[s.sn] || 0;
+    const epaMissRate = epaTotal > 0 ? 1 - (epaValid / epaTotal) : null;
+    // Trip excess: scale 0-1 where avg >3 trips = 1.0
+    const tripExcess = avgTrips != null ? Math.min((avgTrips - 1) / 2, 1) : null;
+
+    // Weighted score (only include components with data)
+    let score = null, totalW = 0;
+    const add = (val, w) => {
+      if (val == null) return;
+      score = (score || 0) + val * w;
+      totalW += w;
+    };
+    add(fcrRate,   0.40);
+    add(slaRate,   0.20);
+    add(repeatRate,0.20);
+    add(tripExcess,0.10);
+    add(epaMissRate,0.10);
+    if (totalW > 0) score = (score / totalW) * 100;
+
+    _storeScores[s.sn] = {
+      ...s,
+      fcrRate, slaRate, repeatRate, avgTrips, epaMissRate,
+      score,
+      epaTotal, epaValid,
+    };
+  });
+  return _storeScores;
+}
+
+function _computeOrgScores(storeScores) {
+  if (_orgScores) return _orgScores;
+  const dirs = {};
+  Object.values(storeScores).forEach(s => {
+    const key = `${s.sr}||${s.dir}`;
+    if (!dirs[key]) dirs[key] = {
+      sr: s.sr, dir: s.dir,
+      scores:[], fcr:[], sla:[], repeat:[], epaT:0, epaV:0, wo:0
+    };
+    const d = dirs[key];
+    if (s.score != null) d.scores.push(s.score);
+    if (s.fcrRate != null) d.fcr.push(s.fcrRate);
+    if (s.slaRate != null) d.sla.push(s.slaRate);
+    if (s.repeatRate != null) d.repeat.push(s.repeatRate);
+    d.epaT += s.epaTotal;
+    d.epaV += s.epaValid;
+    d.wo   += s.wo_total;
+  });
+  const avg = arr => arr.length ? arr.reduce((a,b)=>a+b,0)/arr.length : null;
+  _orgScores = Object.values(dirs).map(d => ({
+    ...d,
+    score: avg(d.scores),
+    fcrRate: avg(d.fcr),
+    slaRate: avg(d.sla),
+    repeatRate: avg(d.repeat),
+    epaPct: d.epaT > 0 ? d.epaV/d.epaT : null,
+    storeCount: d.scores.length,
+  })).sort((a,b) => (b.score||0)-(a.score||0));
+  return _orgScores;
+}
+
+// ── Charts ───────────────────────────────────────────────────────────
+let _srChart = null;
+let _examChart = null;
+let _distChart = null;
+
+function _renderSrChart(orgScores) {
+  // Group by Sr Director
+  const srMap = {};
+  orgScores.forEach(d => {
+    if (!d.sr) return;
+    if (!srMap[d.sr]) srMap[d.sr] = [];
+    if (d.score != null) srMap[d.sr].push(d.score);
+  });
+  const labels = Object.keys(srMap).sort((a,b) => {
+    const as = srMap[a].reduce((x,y)=>x+y,0)/srMap[a].length;
+    const bs = srMap[b].reduce((x,y)=>x+y,0)/srMap[b].length;
+    return bs - as;
+  }).slice(0,20);
+  const data = labels.map(l => {
+    const arr = srMap[l];
+    return arr.length ? arr.reduce((a,b)=>a+b,0)/arr.length : 0;
+  });
+  const colors = data.map(v => v>=70?'#ea1100':v>=40?'#ffc220':'#2a8703');
+
+  const ctx = document.getElementById('chart-sr-gap')?.getContext('2d');
+  if (!ctx) return;
+  if (_srChart) _srChart.destroy();
+  _srChart = new Chart(ctx, {
+    type: 'bar',
+    data: { labels, datasets: [{ label: 'Gap Score', data, backgroundColor: colors, borderRadius:4 }] },
+    options: {
+      responsive: true, maintainAspectRatio: false, indexAxis: 'y',
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { min:0, max:100, grid:{ color:'#f0f0f0' }, ticks:{ font:{size:10} } },
+        y: { ticks: { font:{size:9}, callback: v => v.length>22?v.slice(0,22)+'…':v } }
+      }
+    }
+  });
+}
+
+function _renderExamTrend() {
+  // Roll up exam pass rate by fiscal week
+  const weekMap = {};
+  (EXAM_REG || []).forEach(e => {
+    const yr  = e.wmt_year_nbr;
+    const wk  = e.wmt_week_of_year_nbr;
+    if (!yr || !wk) return;
+    const key = `FY${yr}-W${String(wk).padStart(2,'0')}`;
+    if (!weekMap[key]) weekMap[key] = { pass:0, total:0 };
+    weekMap[key].total++;
+    if ((e.Result||'').toLowerCase().includes('pass')) weekMap[key].pass++;
+  });
+  const labels = Object.keys(weekMap).sort().slice(-24);
+  const data   = labels.map(k => {
+    const v = weekMap[k];
+    return v.total > 0 ? (v.pass/v.total)*100 : null;
+  });
+  const ctx = document.getElementById('chart-exam-trend')?.getContext('2d');
+  if (!ctx) return;
+  if (_examChart) _examChart.destroy();
+  _examChart = new Chart(ctx, {
+    type: 'line',
+    data: { labels, datasets: [{
+      label: 'Pass Rate %', data,
+      borderColor: '#0053e2', backgroundColor: 'rgba(0,83,226,.08)',
+      tension: 0.3, fill: true, pointRadius: 3,
+    }] },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        y: { min:0, max:100, ticks:{ callback: v=>v+'%', font:{size:10} }, grid:{color:'#f0f0f0'} },
+        x: { ticks: { font:{size:9}, maxRotation:45 } }
+      }
+    }
+  });
+}
+
+function _renderDistChart(storeScores) {
+  const high = Object.values(storeScores).filter(s => s.score >= 70).length;
+  const med  = Object.values(storeScores).filter(s => s.score >= 40 && s.score < 70).length;
+  const low  = Object.values(storeScores).filter(s => s.score != null && s.score < 40).length;
+  const na   = Object.values(storeScores).filter(s => s.score == null).length;
+  const ctx = document.getElementById('chart-score-dist')?.getContext('2d');
+  if (!ctx) return;
+  if (_distChart) _distChart.destroy();
+  _distChart = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels: ['High Need (70+)', 'Med Need (40-69)', 'Low Need (<40)', 'No Data'],
+      datasets: [{ data:[high,med,low,na],
+        backgroundColor:['#ea1100','#ffc220','#2a8703','#c2c2c2'],
+        borderWidth:2, borderColor:'#fff'
+      }]
+    },
+    options: {
+      responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{display:false} }
+    }
+  });
+  document.getElementById('score-dist-legend').innerHTML = [
+    ['High Need (70+)', high, 'text-wmt-red'],
+    ['Med Need (40-69)', med, 'text-wmt-warn'],
+    ['Low Need (<40)',  low, 'text-green-700'],
+    ['No Data',        na,  'text-wmt-gray100'],
+  ].map(([l,n,c])=>`<div class="flex justify-between"><span class="${c}">${l}</span><span class="font-bold">${n}</span></div>`).join('');
+}
+
+// ── Tables ───────────────────────────────────────────────────────────
+function _renderStoreTable(storeScores, srFilter) {
+  const rows = Object.values(storeScores)
+    .filter(s => !srFilter || s.sr === srFilter)
+    .filter(s => s.score != null)
+    .sort((a,b) => (b.score||0)-(a.score||0))
+    .slice(0, 50);
+  const tbody = document.getElementById('overview-table-body');
+  if (!tbody) return;
+  tbody.innerHTML = rows.map((s,i) => `
+    <tr class="hover:bg-wmt-gray10 ${i%2===0?'':'bg-gray-50/50'}">
+      <td class="px-3 py-2 text-wmt-gray100">${i+1}</td>
+      <td class="px-3 py-2 font-mono font-semibold">${s.sn}</td>
+      <td class="px-3 py-2">${s.sr||'—'}</td>
+      <td class="px-3 py-2">${s.dir||'—'}</td>
+      <td class="px-3 py-2">${s.rm||'—'}</td>
+      <td class="px-3 py-2 text-right">${scorePill(s.score)}</td>
+      <td class="px-3 py-2 text-right ${s.fcrRate>0.3?'text-wmt-red font-semibold':''}">${
+        s.fcrRate!=null ? pct((1-s.fcrRate)*100) : '—'}</td>
+      <td class="px-3 py-2 text-right ${s.slaRate>0.3?'text-wmt-red font-semibold':''}">${
+        s.slaRate!=null ? pct((1-s.slaRate)*100) : '—'}</td>
+      <td class="px-3 py-2 text-right">${s.repeatRate!=null?pct(s.repeatRate*100):'—'}</td>
+      <td class="px-3 py-2 text-right">${fmt(s.wo_total)}</td>
+    </tr>`).join('');
+}
+
+function _renderDirectorTable(orgScores) {
+  // Exam pass by director (from EXAM_REG - match by sr/dir name)
+  const examByDir = {};
+  (EXAM_REG||[]).forEach(e => {
+    // Can't directly join; we'll skip exam column here
+  });
+  const tbody = document.getElementById('director-table-body');
+  if (!tbody) return;
+  tbody.innerHTML = orgScores.map((d,i) => `
+    <tr class="hover:bg-wmt-gray10 ${i%2===0?'':'bg-gray-50/50'}">
+      <td class="px-3 py-2">${d.sr||'—'}</td>
+      <td class="px-3 py-2 font-semibold">${d.dir||'—'}</td>
+      <td class="px-3 py-2 text-right">${fmt(d.storeCount)}</td>
+      <td class="px-3 py-2 text-right">${scorePill(d.score)}</td>
+      <td class="px-3 py-2 text-right ${d.fcrRate>0.3?'text-wmt-red font-semibold':''}">${
+        d.fcrRate!=null?pct((1-d.fcrRate)*100):'—'}</td>
+      <td class="px-3 py-2 text-right ${d.slaRate>0.3?'text-wmt-red font-semibold':''}">${
+        d.slaRate!=null?pct((1-d.slaRate)*100):'—'}</td>
+      <td class="px-3 py-2 text-right">${d.repeatRate!=null?pct(d.repeatRate*100):'—'}</td>
+      <td class="px-3 py-2 text-right">${d.epaPct!=null?pct(d.epaPct*100):'—'}</td>
+      <td class="px-3 py-2 text-right">—</td>
+      <td class="px-3 py-2 text-right">${fmt(d.wo)}</td>
+    </tr>`).join('');
+}
+
+function _renderKpis(storeScores) {
+  const scores   = Object.values(storeScores).map(s=>s.score).filter(s=>s!=null);
+  const avgScore = scores.length ? scores.reduce((a,b)=>a+b,0)/scores.length : null;
+  const allWos   = (TRAINING_WOS||[]);
+  const fcrWos   = allWos.filter(w=>(w.first_time_fix_compliance||'').toUpperCase()==='Y');
+  const fcrRate  = allWos.length ? fcrWos.length/allWos.length : null;
+  const slaWos   = allWos.filter(w=>(w.sla_repair_compliance||'').toUpperCase()==='Y');
+  const slaRate  = allWos.length ? slaWos.length/allWos.length : null;
+  const techTotal = (TECH_ALIGNMENT||[]).length;
+  const epaTot   = (EPA_CERTS||[]).length;
+  const today    = new Date();
+  const epaValid = (EPA_CERTS||[]).filter(c=>c.expiry_date && new Date(c.expiry_date)>today).length;
+  const epaPct   = epaTot ? epaValid/epaTot : null;
+
+  const cards = [
+    { label:'Active Techs',      val: fmt(techTotal),       sub:'in alignment',      color:'text-wmt-blue' },
+    { label:'Avg Gap Score',     val: avgScore!=null?Math.round(avgScore)+'':'—', sub:'0=none · 100=critical', color: avgScore>=70?'text-wmt-red':avgScore>=40?'text-yellow-600':'text-green-700' },
+    { label:'First-Call Fix',    val: fcrRate!=null?pct(fcrRate*100):'—', sub:'HVACR WOs (18mo)', color: fcrRate<0.7?'text-wmt-red':'text-green-700' },
+    { label:'SLA Compliance',    val: slaRate!=null?pct(slaRate*100):'—', sub:'repair on time',  color: slaRate<0.7?'text-wmt-red':'text-green-700' },
+    { label:'EPA Cert Valid',    val: epaPct!=null?pct(epaPct*100):'—',  sub:`${fmt(epaValid)} of ${fmt(epaTot)}`, color: epaPct<0.9?'text-wmt-red':'text-green-700' },
+  ];
+  document.getElementById('overview-kpis').innerHTML = cards.map(c=>`
+    <div class="kpi-card bg-white rounded-xl shadow p-4">
+      <div class="text-xs text-wmt-gray100 font-medium mb-1">${c.label}</div>
+      <div class="text-2xl font-black ${c.color}">${c.val}</div>
+      <div class="text-xs text-wmt-gray100 mt-1">${c.sub}</div>
+    </div>`).join('');
+}
+
+function _renderInsight(storeScores, orgScores) {
+  const highNeed = Object.values(storeScores).filter(s=>s.score>=70).length;
+  const topSr = orgScores[0];
+  const woCount = (TRAINING_WOS||[]).length;
+  document.getElementById('overview-insight').innerHTML = `
+    <strong>💡 Training Intelligence Summary:</strong>
+    Analyzing <strong>${fmt(woCount)}</strong> HVACR work orders over the last 18 months across
+    <strong>${fmt(Object.keys(storeScores).length)}</strong> stores.
+    <strong>${fmt(highNeed)}</strong> stores have a High Training Need score (≥70).
+    ${topSr ? `Sr Director <strong>${topSr.sr}</strong> has the highest average gap score
+    (<strong>${Math.round(topSr.score||0)}</strong>) across their ${topSr.storeCount} stores.`:''}
+    Use the filters and tabs above to drill into specific technicians, EPA certifications,
+    field observations, and Top Gun outcomes.`;
+}
+
+function _populateSrFilter(storeScores) {
+  const sel = document.getElementById('ov-sr-filter');
+  if (!sel) return;
+  const srs = [...new Set(Object.values(storeScores).map(s=>s.sr).filter(Boolean))].sort();
+  sel.innerHTML = `<option value="">All Sr Directors</option>` +
+    srs.map(s=>`<option value="${s}">${s}</option>`).join('');
+}
+
+// ── Main render ───────────────────────────────────────────────────────────
+function render_overview() {
+  _storeScores = null;  // invalidate cache on filter change
+  _orgScores   = null;
+  const storeScores = _computeStoreScores();
+  const orgScores   = _computeOrgScores(storeScores);
+  const srFilter    = document.getElementById('ov-sr-filter')?.value || '';
+
+  _renderKpis(storeScores);
+  _renderInsight(storeScores, orgScores);
+  _renderSrChart(orgScores);
+  _renderExamTrend();
+  _renderDistChart(storeScores);
+  _populateSrFilter(storeScores);
+  _renderStoreTable(storeScores, srFilter);
+  _renderDirectorTable(orgScores);
+}
+
+// Export
+function exportOverviewTable() {
+  const storeScores = _computeStoreScores();
+  const rows = Object.values(storeScores).sort((a,b)=>(b.score||0)-(a.score||0));
+  const header = 'Store,Sr Director,Director,RM,Gap Score,FCR %,SLA %,Repeat %,WOs\n';
+  const csv = header + rows.map(s => [
+    s.sn, s.sr, s.dir, s.rm,
+    s.score!=null?Math.round(s.score):'',
+    s.fcrRate!=null?((1-s.fcrRate)*100).toFixed(1):'',
+    s.slaRate!=null?((1-s.slaRate)*100).toFixed(1):'',
+    s.repeatRate!=null?(s.repeatRate*100).toFixed(1):'',
+    s.wo_total,
+  ].join(',')).join('\n');
+  const a = document.createElement('a');
+  a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+  a.download = 'hvacr_training_gap_scores.csv';
+  a.click();
+}
+</script>
+
+<!-- ====== TECHNICIANS JS ====== -->
+<script>
+let _techData = null;
+let _techLevelChart = null;
+let _examTypeChart  = null;
+
+function _buildTechData() {
+  if (_techData) return _techData;
+
+  // ── EPA validity lookup (by user_id, lowercased)
+  const today = new Date();
+  const epaByUid = {};  // uid -> { valid, expiry }
+  (EPA_CERTS||[]).forEach(c => {
+    const uid = String(c.user_id||'').toLowerCase().trim();
+    if (!uid) return;
+    const exp = c.expiry_date ? new Date(c.expiry_date) : null;
+    const valid = exp && exp > today;
+    if (!epaByUid[uid] || valid) epaByUid[uid] = { valid, expiry: c.expiry_date };
+  });
+  const epaByName = {};
+  (EPA_CERTS||[]).forEach(c => {
+    const name = (c.full_name||'').toLowerCase().trim();
+    if (!name) return;
+    const exp = c.expiry_date ? new Date(c.expiry_date) : null;
+    const valid = exp && exp > today;
+    if (!epaByName[name] || valid) epaByName[name] = { valid, expiry: c.expiry_date };
+  });
+
+  // ── Org hierarchy from TECH_STORES (user_id -> { sr, dir, rm })
+  const orgByUid = {};
+  (TECH_STORES||[]).forEach(ts => {
+    const uid = String(ts.user_id||'').toLowerCase().trim();
+    if (!uid || orgByUid[uid]) return;
+    orgByUid[uid] = {
+      sr:  ts.sr_director||'',
+      dir: ts.director||'',
+      rm:  ts.rm||'',
+    };
+  });
+
+  // ── Latest exam per student (by student_id)
+  const examByStudentId = {};
+  (EXAM_REG||[]).forEach(e => {
+    const sid = String(e.student_id||e.student_name||'').toLowerCase().trim();
+    if (!sid) return;
+    const existing = examByStudentId[sid];
+    if (!existing || (e.Testing_Date||'') > (existing.Testing_Date||'')) {
+      examByStudentId[sid] = e;
+    }
+  });
+  // Also index by name for fuzzy join
+  const examByName = {};
+  Object.values(examByStudentId).forEach(e => {
+    const name = (e.student_name||'').toLowerCase().trim();
+    if (name) examByName[name] = e;
+  });
+
+  // ── Assemble tech rows from TECH_ALIGNMENT
+  _techData = (TECH_ALIGNMENT||[]).map(t => {
+    const uid  = String(t.user_id||'').toLowerCase().trim();
+    const name = `${t.first_name||''} ${t.last_name||''}`.toLowerCase().trim();
+    const org  = orgByUid[uid] || {};
+
+    // Join exam
+    const exam = examByStudentId[uid] || examByName[name] || null;
+
+    // EPA
+    const epa = epaByUid[uid] || epaByName[name] || null;
+
+    return {
+      uid, name: `${t.first_name} ${t.last_name}`,
+      level: t.technician_level||'',
+      role:  t.org_role||'',
+      home_store: t.home_store||'',
+      mgr:   `${t.mgr_first_name||''} ${t.mgr_last_name||''}`.trim(),
+      sr:    org.sr, dir: org.dir, rm: org.rm,
+      exam_date:   exam?.Testing_Date||null,
+      exam_score:  exam?.Score||null,
+      exam_result: exam?.Result||null,
+      exam_type:   exam?.test_type||null,
+      exam_attempts: exam?.attempt||null,
+      epa_valid:   epa?.valid ?? null,
+      epa_expiry:  epa?.expiry||null,
+    };
+  });
+  return _techData;
+}
+
+function render_technicians() {
+  _techData = null;
+  const techs   = _buildTechData();
+  const srFilt  = document.getElementById('tech-sr-filter')?.value||'';
+  const lvlFilt = document.getElementById('tech-level-filter')?.value||'';
+  const exFilt  = document.getElementById('tech-exam-filter')?.value||'';
+
+  // Populate filter options
+  const srs  = [...new Set(techs.map(t=>t.sr).filter(Boolean))].sort();
+  const lvls = [...new Set(techs.map(t=>t.level).filter(Boolean))].sort();
+  const srSel = document.getElementById('tech-sr-filter');
+  if (srSel && srSel.options.length <= 1) {
+    srs.forEach(s => { const o=document.createElement('option'); o.value=s; o.textContent=s; srSel.appendChild(o); });
+  }
+  const lvlSel = document.getElementById('tech-level-filter');
+  if (lvlSel && lvlSel.options.length <= 1) {
+    lvls.forEach(l => { const o=document.createElement('option'); o.value=l; o.textContent=l; lvlSel.appendChild(o); });
+  }
+
+  let filtered = techs
+    .filter(t => !srFilt  || t.sr===srFilt)
+    .filter(t => !lvlFilt || t.level===lvlFilt)
+    .filter(t => {
+      if (!exFilt) return true;
+      if (exFilt==='pass') return (t.exam_result||'').toLowerCase().includes('pass');
+      if (exFilt==='fail') return (t.exam_result||'').toLowerCase().includes('fail');
+      if (exFilt==='none') return !t.exam_result;
+      return true;
+    });
+
+  // Banner filter via store type would need store lookup; skip for now
+
+  _renderLevelChart(filtered);
+  _renderExamTypeChart(filtered);
+  _renderTechKpis(techs, filtered);
+  _renderTechTable(filtered);
+  _renderHighRisk(techs);
+}
+
+function _renderTechKpis(all, filtered) {
+  const total   = filtered.length;
+  const hasPassed = filtered.filter(t=>(t.exam_result||'').toLowerCase().includes('pass')).length;
+  const hasFailed = filtered.filter(t=>(t.exam_result||'').toLowerCase().includes('fail')).length;
+  const noExam  = filtered.filter(t=>!t.exam_result).length;
+  const epaOk   = filtered.filter(t=>t.epa_valid===true).length;
+  const cards = [
+    { label:'Total Active Techs', val:fmt(total),    sub:'in filter', color:'text-wmt-blue' },
+    { label:'Exam Pass',          val:fmt(hasPassed), sub:pct(total?hasPassed/total*100:0), color:'text-green-700' },
+    { label:'Exam Fail / No Exam',val:fmt(hasFailed+noExam), sub:`${fmt(hasFailed)} fail · ${fmt(noExam)} no record`, color:(hasFailed+noExam)>0?'text-wmt-red':'text-green-700' },
+    { label:'EPA Cert Valid',     val:fmt(epaOk),     sub:pct(total?epaOk/total*100:0), color:epaOk/total<0.9?'text-wmt-red':'text-green-700' },
+  ];
+  document.getElementById('tech-kpis').innerHTML = cards.map(c=>`
+    <div class="kpi-card bg-white rounded-xl shadow p-4">
+      <div class="text-xs text-wmt-gray100 mb-1">${c.label}</div>
+      <div class="text-2xl font-black ${c.color}">${c.val}</div>
+      <div class="text-xs text-wmt-gray100 mt-1">${c.sub}</div>
+    </div>`).join('');
+  document.getElementById('tech-count-label').textContent = `${fmt(total)} techs`;
+}
+
+function _renderLevelChart(techs) {
+  const levelCounts = {};
+  techs.forEach(t => { const l=t.level||'Unknown'; levelCounts[l]=(levelCounts[l]||0)+1; });
+  const labels = Object.keys(levelCounts).sort();
+  const data   = labels.map(l=>levelCounts[l]);
+  const colors = ['#0053e2','#ffc220','#2a8703','#ea1100','#919191','#00b0c8'];
+  const ctx = document.getElementById('chart-tech-levels')?.getContext('2d');
+  if (!ctx) return;
+  if (_techLevelChart) _techLevelChart.destroy();
+  _techLevelChart = new Chart(ctx, {
+    type: 'bar',
+    data: { labels, datasets: [{ label:'Techs', data, backgroundColor:colors, borderRadius:4 }] },
+    options: {
+      responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{display:false} },
+      scales:{
+        y:{ ticks:{font:{size:10}}, grid:{color:'#f0f0f0'} },
+        x:{ ticks:{font:{size:9}} }
+      }
+    }
+  });
+}
+
+function _renderExamTypeChart(techs) {
+  const typeCounts = { pass:{}, fail:{} };
+  techs.forEach(t => {
+    const tp = t.exam_type||'Unknown';
+    const res = (t.exam_result||'').toLowerCase();
+    if (res.includes('pass')) typeCounts.pass[tp]=(typeCounts.pass[tp]||0)+1;
+    else if (res.includes('fail')) typeCounts.fail[tp]=(typeCounts.fail[tp]||0)+1;
+  });
+  const labels = [...new Set([
+    ...Object.keys(typeCounts.pass),
+    ...Object.keys(typeCounts.fail)
+  ])].sort();
+  const ctx = document.getElementById('chart-exam-by-type')?.getContext('2d');
+  if (!ctx) return;
+  if (_examTypeChart) _examTypeChart.destroy();
+  _examTypeChart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        { label:'Pass', data:labels.map(l=>typeCounts.pass[l]||0), backgroundColor:'#2a8703', borderRadius:4 },
+        { label:'Fail', data:labels.map(l=>typeCounts.fail[l]||0), backgroundColor:'#ea1100', borderRadius:4 },
+      ]
+    },
+    options: {
+      responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{ position:'top', labels:{font:{size:10}} } },
+      scales:{
+        x:{ stacked:false, ticks:{font:{size:8}, maxRotation:45} },
+        y:{ ticks:{font:{size:10}}, grid:{color:'#f0f0f0'} }
+      }
+    }
+  });
+}
+
+function _renderTechTable(techs) {
+  const sorted = [...techs].sort((a,b) => {
+    // Failures first, then no-exam, then passes
+    const rank = t => (t.exam_result||'').toLowerCase().includes('fail') ? 0 :
+      !t.exam_result ? 1 : 2;
+    return rank(a) - rank(b);
+  });
+  const tbody = document.getElementById('tech-table-body');
+  if (!tbody) return;
+  tbody.innerHTML = sorted.slice(0, 200).map((t,i) => {
+    const res = (t.exam_result||'').toLowerCase();
+    const resHtml = res.includes('pass')
+      ? `<span class="score-low rounded px-2 py-0.5 font-bold">PASS</span>`
+      : res.includes('fail')
+      ? `<span class="score-high rounded px-2 py-0.5 font-bold">FAIL</span>`
+      : `<span class="score-none rounded px-2 py-0.5">None</span>`;
+    const epaHtml = t.epa_valid===true
+      ? `<span class="score-low rounded px-2 py-0.5">✓ Valid</span>`
+      : t.epa_valid===false
+      ? `<span class="score-high rounded px-2 py-0.5">⚠ Exp</span>`
+      : `<span class="score-none rounded px-2 py-0.5">—</span>`;
+    return `<tr class="hover:bg-wmt-gray10 ${i%2===0?'':'bg-gray-50/50'}">
+      <td class="px-3 py-2 font-medium">${t.name}</td>
+      <td class="px-3 py-2">${t.level||'—'}</td>
+      <td class="px-3 py-2 text-wmt-gray100">${t.role||'—'}</td>
+      <td class="px-3 py-2 font-mono">${t.home_store||'—'}</td>
+      <td class="px-3 py-2">${t.sr||'—'}</td>
+      <td class="px-3 py-2 text-right text-wmt-gray100">${t.exam_date||'—'}</td>
+      <td class="px-3 py-2 text-right">${t.exam_score!=null?t.exam_score:'—'}</td>
+      <td class="px-3 py-2 text-right">${resHtml}</td>
+      <td class="px-3 py-2 text-right">${t.exam_attempts||'—'}</td>
+      <td class="px-3 py-2 text-right">${epaHtml}</td>
+    </tr>`;
+  }).join('');
+}
+
+function _renderHighRisk(techs) {
+  const risky = techs.filter(t => {
+    const res = (t.exam_result||'').toLowerCase();
+    return res.includes('fail') || !t.exam_result;
+  }).slice(0, 50);
+  const tbody = document.getElementById('high-risk-tech-body');
+  if (!tbody) return;
+  tbody.innerHTML = risky.map((t,i) => {
+    const issue = (t.exam_result||'').toLowerCase().includes('fail')
+      ? `<span class="score-high rounded px-2 py-0.5 font-bold">Failed Exam</span>`
+      : `<span class="score-none rounded px-2 py-0.5">No Exam Record</span>`;
+    return `<tr class="hover:bg-red-50/50">
+      <td class="px-3 py-2 font-medium">${t.name}</td>
+      <td class="px-3 py-2">${t.level||'—'}</td>
+      <td class="px-3 py-2 font-mono">${t.home_store||'—'}</td>
+      <td class="px-3 py-2">${t.mgr||'—'}</td>
+      <td class="px-3 py-2 text-right">${issue}</td>
+    </tr>`;
+  }).join('');
+}
+
+function exportTechTable() {
+  const techs = _buildTechData();
+  const hdr = 'Name,Level,Role,Home Store,Sr Director,Director,Exam Date,Score,Result,Attempts,EPA Valid\n';
+  const csv = hdr + techs.map(t=>[
+    t.name, t.level, t.role, t.home_store, t.sr, t.dir,
+    t.exam_date||'', t.exam_score||'', t.exam_result||'', t.exam_attempts||'',
+    t.epa_valid!=null?t.epa_valid:''
+  ].join(',')).join('\n');
+  const a=document.createElement('a');
+  a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv);
+  a.download='hvacr_tech_training_status.csv';
+  a.click();
+}
+</script>
+
+<!-- ====== WO PERFORMANCE JS ====== -->
+<script>
+let _woChartFcr=null, _woChartSla=null, _woChartRepeat=null;
+
+function render_workorders() {
+  const srFilt = document.getElementById('wo-sr-filter')?.value||'';
+
+  // Build store-level WO metrics
+  const byStore = {};
+  (TRAINING_WOS||[]).forEach(w => {
+    const sn = String(w.store_nbr||'');
+    if (!sn) return;
+    if (BANNER_FILTER==='walmart' && w.store_type==='sams') return;
+    if (BANNER_FILTER==='sams'    && w.store_type!=='sams') return;
+    if (srFilt && w.sr_director !== srFilt) return;
+    if (!byStore[sn]) byStore[sn]={
+      sn, sr:w.sr_director||'', dir:w.director||'', rm:w.rm||'',
+      total:0, fcr_y:0, fcr_n:0, sla_y:0, sla_n:0,
+      trip_sum:0, trip_n:0, probs:{}
+    };
+    const s=byStore[sn];
+    s.total++;
+    const fcr=(w.first_time_fix_compliance||'').toUpperCase();
+    if(fcr==='Y') s.fcr_y++; else if(fcr==='N') s.fcr_n++;
+    const sla=(w.sla_repair_compliance||'').toUpperCase();
+    if(sla==='Y') s.sla_y++; else if(sla==='N') s.sla_n++;
+    const tr=parseFloat(w.trip_count||0);
+    if(tr>0){s.trip_sum+=tr; s.trip_n++;}
+    const prob=(w.problem_code_desc||'Unknown').trim();
+    s.probs[prob]=(s.probs[prob]||0)+1;
+  });
+
+  // Populate Sr Director filter
+  const srSel=document.getElementById('wo-sr-filter');
+  if(srSel && srSel.options.length<=1){
+    const srs=[...new Set(Object.values(byStore).map(s=>s.sr).filter(Boolean))].sort();
+    srs.forEach(s=>{const o=document.createElement('option');o.value=s;o.textContent=s;srSel.appendChild(o);});
+  }
+
+  const stores = Object.values(byStore).map(s => ({
+    ...s,
+    fcrRate: (s.fcr_y+s.fcr_n)>0 ? s.fcr_y/(s.fcr_y+s.fcr_n) : null,
+    slaRate: (s.sla_y+s.sla_n)>0 ? s.sla_y/(s.sla_y+s.sla_n) : null,
+    avgTrips: s.trip_n>0 ? s.trip_sum/s.trip_n : null,
+    topProb: Object.entries(s.probs).sort((a,b)=>b[1]-a[1])[0]?.[0]||'',
+    repeatWos: Object.values(s.probs).filter(n=>n>1).reduce((a,b)=>a+b,0),
+  })).sort((a,b)=>(a.fcrRate??1)-(b.fcrRate??1));
+
+  _renderWoKpis(stores);
+  _renderFcrByProbChart();
+  _renderSlaBySrChart(stores);
+  _renderRepeatCodesChart();
+  _renderWoTable(stores);
+}
+
+function _renderWoKpis(stores) {
+  const total = stores.reduce((a,s)=>a+s.total,0);
+  const fcrArr = stores.filter(s=>s.fcrRate!=null).map(s=>s.fcrRate);
+  const slaArr = stores.filter(s=>s.slaRate!=null).map(s=>s.slaRate);
+  const avgFcr = fcrArr.length ? fcrArr.reduce((a,b)=>a+b)/fcrArr.length : null;
+  const avgSla = slaArr.length ? slaArr.reduce((a,b)=>a+b)/slaArr.length : null;
+  const avgTrip = stores.filter(s=>s.avgTrips!=null).map(s=>s.avgTrips);
+  const avgT = avgTrip.length ? avgTrip.reduce((a,b)=>a+b)/avgTrip.length : null;
+  const cards=[
+    {label:'Total HVACR WOs', val:fmt(total), sub:'last 18 months', color:'text-wmt-blue'},
+    {label:'Avg FCR Rate', val:avgFcr!=null?pct(avgFcr*100):'—', sub:'first-call resolution', color:avgFcr!=null&&avgFcr<0.7?'text-wmt-red':'text-green-700'},
+    {label:'Avg SLA Compliance', val:avgSla!=null?pct(avgSla*100):'—', sub:'repair on time', color:avgSla!=null&&avgSla<0.7?'text-wmt-red':'text-green-700'},
+    {label:'Avg Trips per WO', val:avgT!=null?avgT.toFixed(2):'—', sub:'1.0 = perfect', color:avgT!=null&&avgT>1.5?'text-wmt-red':'text-green-700'},
+  ];
+  document.getElementById('wo-kpis').innerHTML=cards.map(c=>`
+    <div class="kpi-card bg-white rounded-xl shadow p-4">
+      <div class="text-xs text-wmt-gray100 mb-1">${c.label}</div>
+      <div class="text-2xl font-black ${c.color}">${c.val}</div>
+      <div class="text-xs text-wmt-gray100 mt-1">${c.sub}</div>
+    </div>`).join('');
+}
+
+function _renderFcrByProbChart() {
+  const probMap={};
+  (TRAINING_WOS||[]).forEach(w=>{
+    const prob=(w.problem_code_desc||'Unknown').trim();
+    if(!probMap[prob]) probMap[prob]={y:0,n:0};
+    const fcr=(w.first_time_fix_compliance||'').toUpperCase();
+    if(fcr==='Y') probMap[prob].y++;
+    else if(fcr==='N') probMap[prob].n++;
+  });
+  // Top 15 by volume with FCR data
+  const sorted=Object.entries(probMap)
+    .filter(([,v])=>(v.y+v.n)>=5)
+    .map(([k,v])=>({label:k, total:v.y+v.n, rate:v.y/(v.y+v.n)}))
+    .sort((a,b)=>a.rate-b.rate).slice(0,15);
+  const labels=sorted.map(x=>x.label.length>30?x.label.slice(0,30)+'…':x.label);
+  const data=sorted.map(x=>+(x.rate*100).toFixed(1));
+  const colors=data.map(v=>v<70?'#ea1100':v<85?'#ffc220':'#2a8703');
+  const ctx=document.getElementById('chart-fcr-prob')?.getContext('2d');
+  if(!ctx) return;
+  if(_woChartFcr) _woChartFcr.destroy();
+  _woChartFcr=new Chart(ctx,{
+    type:'bar',
+    data:{labels,datasets:[{label:'FCR %',data,backgroundColor:colors,borderRadius:3}]},
+    options:{
+      responsive:true,maintainAspectRatio:false,indexAxis:'y',
+      plugins:{legend:{display:false}},
+      scales:{
+        x:{min:0,max:100,ticks:{callback:v=>v+'%',font:{size:10}},grid:{color:'#f0f0f0'}},
+        y:{ticks:{font:{size:8}}}
+      }
+    }
+  });
+}
+
+function _renderSlaBySrChart(stores) {
+  const srMap={};
+  stores.forEach(s=>{
+    if(!s.sr) return;
+    if(!srMap[s.sr]) srMap[s.sr]=[];
+    if(s.slaRate!=null) srMap[s.sr].push(s.slaRate);
+  });
+  const labels=Object.keys(srMap).sort((a,b)=>{
+    const av=srMap[a].reduce((x,y)=>x+y,0)/(srMap[a].length||1);
+    const bv=srMap[b].reduce((x,y)=>x+y,0)/(srMap[b].length||1);
+    return av-bv;
+  });
+  const data=labels.map(l=>{
+    const arr=srMap[l]; return arr.length?(arr.reduce((a,b)=>a+b)/arr.length*100).toFixed(1):null;
+  });
+  const colors=data.map(v=>v<70?'#ea1100':v<85?'#ffc220':'#2a8703');
+  const ctx=document.getElementById('chart-sla-sr')?.getContext('2d');
+  if(!ctx) return;
+  if(_woChartSla) _woChartSla.destroy();
+  _woChartSla=new Chart(ctx,{
+    type:'bar',
+    data:{labels,datasets:[{label:'SLA %',data,backgroundColor:colors,borderRadius:3}]},
+    options:{
+      responsive:true,maintainAspectRatio:false,indexAxis:'y',
+      plugins:{legend:{display:false}},
+      scales:{
+        x:{min:0,max:100,ticks:{callback:v=>v+'%',font:{size:10}},grid:{color:'#f0f0f0'}},
+        y:{ticks:{font:{size:9},callback:v=>v.length>22?v.slice(0,22)+'…':v}}
+      }
+    }
+  });
+}
+
+function _renderRepeatCodesChart() {
+  const storeProbs={};
+  (TRAINING_WOS||[]).forEach(w=>{
+    const sn=String(w.store_nbr||'');
+    const prob=(w.problem_code_desc||'Unknown').trim();
+    if(!storeProbs[sn]) storeProbs[sn]={};
+    storeProbs[sn][prob]=(storeProbs[sn][prob]||0)+1;
+  });
+  const repeatByCode={};
+  Object.values(storeProbs).forEach(probs=>{
+    Object.entries(probs).forEach(([code,n])=>{
+      if(n>1) repeatByCode[code]=(repeatByCode[code]||0)+n;
+    });
+  });
+  const sorted=Object.entries(repeatByCode).sort((a,b)=>b[1]-a[1]).slice(0,20);
+  const labels=sorted.map(([k])=>k.length>35?k.slice(0,35)+'…':k);
+  const data=sorted.map(([,v])=>v);
+  const ctx=document.getElementById('chart-repeat-codes')?.getContext('2d');
+  if(!ctx) return;
+  if(_woChartRepeat) _woChartRepeat.destroy();
+  _woChartRepeat=new Chart(ctx,{
+    type:'bar',
+    data:{labels,datasets:[{label:'Repeat WOs',data,backgroundColor:'#0053e2',borderRadius:3}]},
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false}},
+      scales:{
+        y:{ticks:{font:{size:10}},grid:{color:'#f0f0f0'}},
+        x:{ticks:{font:{size:8},maxRotation:45}}
+      }
+    }
+  });
+}
+
+function _renderWoTable(stores) {
+  const tbody=document.getElementById('wo-table-body');
+  if(!tbody) return;
+  tbody.innerHTML=stores.slice(0,100).map((s,i)=>`
+    <tr class="hover:bg-wmt-gray10 ${i%2===0?'':'bg-gray-50/50'}">
+      <td class="px-3 py-2 font-mono font-semibold">${s.sn}</td>
+      <td class="px-3 py-2">${s.sr||'—'}</td>
+      <td class="px-3 py-2">${s.dir||'—'}</td>
+      <td class="px-3 py-2 text-right">${fmt(s.total)}</td>
+      <td class="px-3 py-2 text-right ${s.fcrRate!=null&&s.fcrRate<0.7?'text-wmt-red font-semibold':''}">${s.fcrRate!=null?pct(s.fcrRate*100):'—'}</td>
+      <td class="px-3 py-2 text-right ${s.slaRate!=null&&s.slaRate<0.7?'text-wmt-red font-semibold':''}">${s.slaRate!=null?pct(s.slaRate*100):'—'}</td>
+      <td class="px-3 py-2 text-right ${s.avgTrips!=null&&s.avgTrips>1.5?'text-yellow-600 font-semibold':''}">${s.avgTrips!=null?s.avgTrips.toFixed(2):'—'}</td>
+      <td class="px-3 py-2 text-right">${fmt(s.repeatWos)}</td>
+      <td class="px-3 py-2 text-wmt-gray100 max-w-[160px] truncate" title="${s.topProb}">${s.topProb||'—'}</td>
+    </tr>`).join('');
+}
+
+function exportWoTable() {
+  const stores={};
+  (TRAINING_WOS||[]).forEach(w=>{
+    const sn=String(w.store_nbr||'');
+    if(!stores[sn]) stores[sn]={sn,sr:w.sr_director||'',dir:w.director||'',total:0,fcr_y:0,fcr_n:0,sla_y:0,sla_n:0};
+    const s=stores[sn]; s.total++;
+    if((w.first_time_fix_compliance||'').toUpperCase()==='Y') s.fcr_y++;
+    if((w.first_time_fix_compliance||'').toUpperCase()==='N') s.fcr_n++;
+    if((w.sla_repair_compliance||'').toUpperCase()==='Y') s.sla_y++;
+    if((w.sla_repair_compliance||'').toUpperCase()==='N') s.sla_n++;
+  });
+  const hdr='Store,Sr Director,Director,Total WOs,FCR %,SLA %\n';
+  const csv=hdr+Object.values(stores).map(s=>[
+    s.sn,s.sr,s.dir,s.total,
+    (s.fcr_y+s.fcr_n)>0?((s.fcr_y/(s.fcr_y+s.fcr_n))*100).toFixed(1):'',
+    (s.sla_y+s.sla_n)>0?((s.sla_y/(s.sla_y+s.sla_n))*100).toFixed(1):'',
+  ].join(',')).join('\n');
+  const a=document.createElement('a');
+  a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv);
+  a.download='hvacr_wo_performance.csv';
+  a.click();
+}
+</script>
+
+<!-- ====== OBSERVATIONS JS ====== -->
+<script>
+let _obsChartGroups=null, _obsChartTrend=null;
+
+function render_observations() {
+  const srFilt    = document.getElementById('obs-sr-filter')?.value||'';
+  const grpFilt   = document.getElementById('obs-group-filter')?.value||'';
+
+  let obs = (OBSERVATIONS||[]);
+  // Populate filters
+  const srSel  = document.getElementById('obs-sr-filter');
+  const grpSel = document.getElementById('obs-group-filter');
+  if(srSel && srSel.options.length<=1) {
+    const srs=[...new Set(obs.map(o=>o.FM_Sr_Director).filter(Boolean))].sort();
+    srs.forEach(s=>{const op=document.createElement('option');op.value=s;op.textContent=s;srSel.appendChild(op);});
+  }
+  if(grpSel && grpSel.options.length<=1) {
+    const grps=[...new Set(obs.map(o=>o.Question_group).filter(Boolean))].sort();
+    grps.forEach(g=>{const op=document.createElement('option');op.value=g;op.textContent=g;grpSel.appendChild(op);});
+  }
+
+  if(srFilt)  obs=obs.filter(o=>o.FM_Sr_Director===srFilt);
+  if(grpFilt) obs=obs.filter(o=>o.Question_group===grpFilt);
+
+  _renderObsKpis(obs);
+  _renderObsGroupChart(obs);
+  _renderObsTrendChart(obs);
+  _renderObsTable(obs);
+}
+
+function _renderObsKpis(obs) {
+  const total   = obs.length;
+  const techs   = new Set(obs.map(o=>o.User_Id).filter(Boolean)).size;
+  const stores  = new Set(obs.map(o=>o.Store).filter(Boolean)).size;
+  const groups  = new Set(obs.map(o=>o.Question_group).filter(Boolean)).size;
+  document.getElementById('obs-kpis').innerHTML = [
+    {label:'Observations',     val:fmt(total),  sub:'total records',     color:'text-wmt-blue'},
+    {label:'Techs Observed',   val:fmt(techs),  sub:'unique technicians', color:'text-wmt-blue'},
+    {label:'Stores Covered',   val:fmt(stores), sub:'unique stores',      color:'text-wmt-blue'},
+    {label:'Question Groups',  val:fmt(groups), sub:'skill categories',   color:'text-wmt-blue'},
+  ].map(c=>`<div class="kpi-card bg-white rounded-xl shadow p-4">
+    <div class="text-xs text-wmt-gray100 mb-1">${c.label}</div>
+    <div class="text-2xl font-black ${c.color}">${c.val}</div>
+    <div class="text-xs text-wmt-gray100 mt-1">${c.sub}</div>
+  </div>`).join('');
+}
+
+function _renderObsGroupChart(obs) {
+  const grpCounts={};
+  obs.forEach(o=>{ const g=o.Question_group||'Unknown'; grpCounts[g]=(grpCounts[g]||0)+1; });
+  const sorted=Object.entries(grpCounts).sort((a,b)=>b[1]-a[1]).slice(0,12);
+  const ctx=document.getElementById('chart-obs-groups')?.getContext('2d');
+  if(!ctx) return;
+  if(_obsChartGroups) _obsChartGroups.destroy();
+  _obsChartGroups=new Chart(ctx,{
+    type:'bar',
+    data:{labels:sorted.map(([k])=>k.length>28?k.slice(0,28)+'…':k),datasets:[{
+      label:'Observations',data:sorted.map(([,v])=>v),
+      backgroundColor:'#0053e2',borderRadius:4
+    }]},
+    options:{
+      responsive:true,maintainAspectRatio:false,indexAxis:'y',
+      plugins:{legend:{display:false}},
+      scales:{
+        x:{ticks:{font:{size:10}},grid:{color:'#f0f0f0'}},
+        y:{ticks:{font:{size:9}}}
+      }
+    }
+  });
+}
+
+function _renderObsTrendChart(obs) {
+  const weekMap={};
+  obs.forEach(o=>{
+    const yr=o.wmt_year_nbr; const wk=o.wmt_week_of_year_nbr;
+    if(!yr||!wk) return;
+    const key=`FY${yr}-W${String(wk).padStart(2,'0')}`;
+    weekMap[key]=(weekMap[key]||0)+1;
+  });
+  const labels=Object.keys(weekMap).sort().slice(-26);
+  const ctx=document.getElementById('chart-obs-trend')?.getContext('2d');
+  if(!ctx) return;
+  if(_obsChartTrend) _obsChartTrend.destroy();
+  _obsChartTrend=new Chart(ctx,{
+    type:'bar',
+    data:{labels,datasets:[{label:'Observations',data:labels.map(k=>weekMap[k]||0),backgroundColor:'#ffc220',borderRadius:3}]},
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false}},
+      scales:{
+        y:{ticks:{font:{size:10}},grid:{color:'#f0f0f0'}},
+        x:{ticks:{font:{size:8},maxRotation:45}}
+      }
+    }
+  });
+}
+
+function _renderObsTable(obs) {
+  const tbody=document.getElementById('obs-table-body');
+  if(!tbody) return;
+  tbody.innerHTML=obs.slice(0,200).map((o,i)=>`
+    <tr class="hover:bg-wmt-gray10 ${i%2===0?'':'bg-gray-50/50'}">
+      <td class="px-3 py-2 whitespace-nowrap">${o.Date||'—'}</td>
+      <td class="px-3 py-2">${o.tech_name||'—'}</td>
+      <td class="px-3 py-2 text-wmt-gray100">${o.Org_Role||'—'}</td>
+      <td class="px-3 py-2 font-mono">${o.Store||'—'}</td>
+      <td class="px-3 py-2">${o.FM_Sr_Director||'—'}</td>
+      <td class="px-3 py-2">${o.Direct_Manager||'—'}</td>
+      <td class="px-3 py-2">${o.Question_group||'—'}</td>
+      <td class="px-3 py-2 max-w-[200px] truncate" title="${o.question||''}">${(o.question||'—').slice(0,60)}</td>
+      <td class="px-3 py-2">${o.answer||'—'}</td>
+      <td class="px-3 py-2">${o.status||'—'}</td>
+    </tr>`).join('');
+}
+
+function exportObsTable() {
+  const hdr='Date,Technician,Role,Store,Sr Director,Manager,Group,Question,Answer,Status\n';
+  const csv=hdr+(OBSERVATIONS||[]).map(o=>[
+    o.Date,o.tech_name,o.Org_Role,o.Store,o.FM_Sr_Director,o.Direct_Manager,
+    o.Question_group,(o.question||'').replace(/,/g,';'),o.answer,o.status
+  ].join(',')).join('\n');
+  const a=document.createElement('a');
+  a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv);
+  a.download='hvacr_field_observations.csv';
+  a.click();
+}
+</script>
+
+<!-- ====== EPA CERTS JS ====== -->
+<script>
+let _epaStatusChart=null, _epaTypesChart=null;
+
+function render_epa() {
+  const statusFilt = document.getElementById('epa-status-filter')?.value||'';
+  const today = new Date();
+  const in90  = new Date(today); in90.setDate(in90.getDate()+90);
+
+  const enriched = (EPA_CERTS||[]).map(c => {
+    const exp = c.expiry_date ? new Date(c.expiry_date) : null;
+    let certStatus = 'no-date';
+    if (exp) {
+      if (exp < today)       certStatus = 'expired';
+      else if (exp <= in90)  certStatus = 'expiring';
+      else                   certStatus = 'valid';
+    }
+    return {...c, certStatus, expDate: exp};
+  });
+
+  const filtered = enriched.filter(c => {
+    if (!statusFilt) return true;
+    return c.certStatus === statusFilt;
+  });
+
+  _renderEpaKpis(enriched);
+  _renderEpaStatusChart(enriched);
+  _renderEpaTypesChart(enriched);
+  _renderEpaExpiring(enriched.filter(c=>c.certStatus==='expiring'));
+  _renderEpaTable(filtered);
+}
+
+function _renderEpaKpis(certs) {
+  const total    = certs.length;
+  const valid    = certs.filter(c=>c.certStatus==='valid').length;
+  const expiring = certs.filter(c=>c.certStatus==='expiring').length;
+  const expired  = certs.filter(c=>c.certStatus==='expired').length;
+  document.getElementById('epa-kpis').innerHTML = [
+    {label:'Total Certs',    val:fmt(total),    sub:'in registry',          color:'text-wmt-blue'},
+    {label:'Valid',          val:fmt(valid),    sub:pct(total?valid/total*100:0), color:'text-green-700'},
+    {label:'Expiring (90d)', val:fmt(expiring), sub:'action required',      color:expiring>0?'text-yellow-600':'text-green-700'},
+    {label:'Expired',        val:fmt(expired),  sub:'compliance risk',      color:expired>0?'text-wmt-red':'text-green-700'},
+  ].map(c=>`<div class="kpi-card bg-white rounded-xl shadow p-4">
+    <div class="text-xs text-wmt-gray100 mb-1">${c.label}</div>
+    <div class="text-2xl font-black ${c.color}">${c.val}</div>
+    <div class="text-xs text-wmt-gray100 mt-1">${c.sub}</div>
+  </div>`).join('');
+}
+
+function _renderEpaStatusChart(certs) {
+  const counts = {valid:0, expiring:0, expired:0, 'no-date':0};
+  certs.forEach(c=>{ counts[c.certStatus]=(counts[c.certStatus]||0)+1; });
+  const ctx=document.getElementById('chart-epa-status')?.getContext('2d');
+  if(!ctx) return;
+  if(_epaStatusChart) _epaStatusChart.destroy();
+  _epaStatusChart=new Chart(ctx,{
+    type:'doughnut',
+    data:{
+      labels:['Valid','Expiring Soon','Expired','No Date'],
+      datasets:[{data:[counts.valid,counts.expiring,counts.expired,counts['no-date']],
+        backgroundColor:['#2a8703','#ffc220','#ea1100','#c2c2c2'],
+        borderWidth:2,borderColor:'#fff'}]
+    },
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{font:{size:10}}}}}
+  });
+}
+
+function _renderEpaTypesChart(certs) {
+  const typeCounts={};
+  certs.forEach(c=>{const t=c.license_type||'Unknown'; typeCounts[t]=(typeCounts[t]||0)+1;});
+  const sorted=Object.entries(typeCounts).sort((a,b)=>b[1]-a[1]);
+  const ctx=document.getElementById('chart-epa-types')?.getContext('2d');
+  if(!ctx) return;
+  if(_epaTypesChart) _epaTypesChart.destroy();
+  _epaTypesChart=new Chart(ctx,{
+    type:'bar',
+    data:{labels:sorted.map(([k])=>k),datasets:[{
+      label:'Count',data:sorted.map(([,v])=>v),
+      backgroundColor:'#0053e2',borderRadius:4
+    }]},
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false}},
+      scales:{
+        y:{ticks:{font:{size:10}},grid:{color:'#f0f0f0'}},
+        x:{ticks:{font:{size:9},maxRotation:30}}
+      }
+    }
+  });
+}
+
+function _renderEpaExpiring(expiring) {
+  const el=document.getElementById('epa-expiring-list');
+  if(!el) return;
+  if(!expiring.length){el.innerHTML='<span class="text-green-700 font-semibold">✓ No certs expiring within 90 days!</span>';return;}
+  el.innerHTML=expiring.slice(0,20).map(c=>
+    `<div class="flex justify-between border-b border-amber-100 py-1">
+      <span class="font-medium">${c.full_name||'—'}</span>
+      <span class="text-wmt-gray100">${c.license_type||'—'} &middot; ${c.license_number||'—'}</span>
+      <span class="font-semibold text-yellow-700">Expires: ${c.expiry_date||'—'}</span>
+    </div>`).join('');
+}
+
+function _renderEpaTable(certs) {
+  const tbody=document.getElementById('epa-table-body');
+  if(!tbody) return;
+  tbody.innerHTML=certs.slice(0,300).map((c,i)=>{
+    const pill = c.certStatus==='valid'
+      ? `<span class="score-low rounded px-2 py-0.5 font-bold">✓ Valid</span>`
+      : c.certStatus==='expiring'
+      ? `<span class="score-med rounded px-2 py-0.5 font-bold">⚠ Expiring</span>`
+      : c.certStatus==='expired'
+      ? `<span class="score-high rounded px-2 py-0.5 font-bold">❌ Expired</span>`
+      : `<span class="score-none rounded px-2 py-0.5">No Date</span>`;
+    return `<tr class="hover:bg-wmt-gray10 ${i%2===0?'':'bg-gray-50/50'}">
+      <td class="px-3 py-2 font-medium">${c.full_name||'—'}</td>
+      <td class="px-3 py-2 text-wmt-gray100">${c.org_role||'—'}</td>
+      <td class="px-3 py-2">${c.user_status||'—'}</td>
+      <td class="px-3 py-2">${c.license_category||'—'}</td>
+      <td class="px-3 py-2">${c.license_type||'—'}</td>
+      <td class="px-3 py-2 font-mono text-wmt-gray100">${c.license_number||'—'}</td>
+      <td class="px-3 py-2 text-right">${c.issue_date||'—'}</td>
+      <td class="px-3 py-2 text-right ${c.certStatus==='expired'?'text-wmt-red font-semibold':c.certStatus==='expiring'?'text-yellow-600 font-semibold':''}">${c.expiry_date||'—'}</td>
+      <td class="px-3 py-2 text-right">${c.license_verified||'—'}</td>
+      <td class="px-3 py-2 text-right">${pill}</td>
+    </tr>`;
+  }).join('');
+}
+
+function exportEpaTable() {
+  const hdr='Name,Role,User Status,License Category,License Type,License #,Issue Date,Expiry Date,Verified,Cert Status\n';
+  const csv=hdr+(EPA_CERTS||[]).map(c=>[
+    c.full_name,c.org_role,c.user_status,c.license_category,c.license_type,
+    c.license_number,c.issue_date,c.expiry_date,c.license_verified,''
+  ].join(',')).join('\n');
+  const a=document.createElement('a');
+  a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv);
+  a.download='hvacr_epa_certs.csv';
+  a.click();
+}
+</script>
+
+<!-- ====== TOP GUN JS ====== -->
+<script>
+let _tgWoChart=null, _tgTntChart=null, _tgCodesChart=null;
+
+function render_topgun() {
+  const data = (TOP_GUN||[]);
+  _renderTgKpis(data);
+  _renderTgWoChart(data);
+  _renderTgTntChart(data);
+  _renderTgCodesChart(data);
+  _renderTgTable(data);
+}
+
+function _renderTgKpis(data) {
+  const total     = data.length;
+  const completed = data.filter(d=>(d.Status||'').toLowerCase().includes('complet')).length;
+  const avgWoRed  = _avg(data.map(d=>parseFloat(d.pct_reduction_wo||0)).filter(v=>!isNaN(v)));
+  const avgTntDiff= _avg(data.map(d=>parseFloat(d.pct_diff_tnt||0)).filter(v=>!isNaN(v)));
+  document.getElementById('tg-kpis').innerHTML = [
+    {label:'Total Engagements', val:fmt(total),     sub:'all Top Gun calls',        color:'text-wmt-blue'},
+    {label:'Completed',         val:fmt(completed), sub:`${total-completed} in progress`, color:'text-wmt-blue'},
+    {label:'Avg WO Reduction',  val:avgWoRed!=null?pct(avgWoRed):'—', sub:'after intervention', color:'text-green-700'},
+    {label:'Avg TnT Improvement',val:avgTntDiff!=null?pct(avgTntDiff):'—', sub:'after intervention', color:'text-green-700'},
+  ].map(c=>`<div class="kpi-card bg-white rounded-xl shadow p-4">
+    <div class="text-xs text-wmt-gray100 mb-1">${c.label}</div>
+    <div class="text-2xl font-black ${c.color}">${c.val}</div>
+    <div class="text-xs text-wmt-gray100 mt-1">${c.sub}</div>
+  </div>`).join('');
+}
+
+function _avg(arr) {
+  return arr.length ? arr.reduce((a,b)=>a+b)/arr.length : null;
+}
+
+function _renderTgWoChart(data) {
+  // Show before/after per store (top 20 by WO before)
+  const sorted=[...data].filter(d=>d.Before_Workorders!=null)
+    .sort((a,b)=>parseFloat(b.Before_Workorders||0)-parseFloat(a.Before_Workorders||0))
+    .slice(0,20);
+  const labels=sorted.map(d=>String(d.Store_nbr||'—'));
+  const before=sorted.map(d=>parseFloat(d.Before_Workorders||0));
+  const after =sorted.map(d=>parseFloat(d.After_Workorders||0));
+  const ctx=document.getElementById('chart-tg-wo')?.getContext('2d');
+  if(!ctx) return;
+  if(_tgWoChart) _tgWoChart.destroy();
+  _tgWoChart=new Chart(ctx,{
+    type:'bar',
+    data:{labels,datasets:[
+      {label:'Before',data:before,backgroundColor:'rgba(234,17,0,.6)',borderRadius:3},
+      {label:'After', data:after, backgroundColor:'rgba(42,135,3,.6)', borderRadius:3},
+    ]},
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{position:'top',labels:{font:{size:10}}}},
+      scales:{
+        y:{ticks:{font:{size:10}},grid:{color:'#f0f0f0'}},
+        x:{ticks:{font:{size:9}}}
+      }
+    }
+  });
+}
+
+function _renderTgTntChart(data) {
+  const sorted=[...data].filter(d=>d.Time_in_Target_Before!=null)
+    .sort((a,b)=>parseFloat(a.Time_in_Target_Before||0)-parseFloat(b.Time_in_Target_Before||0))
+    .slice(0,20);
+  const labels=sorted.map(d=>String(d.Store_nbr||'—'));
+  const before=sorted.map(d=>+(parseFloat(d.Time_in_Target_Before||0)*100).toFixed(1));
+  const after =sorted.map(d=>+(parseFloat(d.Time_in_Target_After||0)*100).toFixed(1));
+  const ctx=document.getElementById('chart-tg-tnt')?.getContext('2d');
+  if(!ctx) return;
+  if(_tgTntChart) _tgTntChart.destroy();
+  _tgTntChart=new Chart(ctx,{
+    type:'bar',
+    data:{labels,datasets:[
+      {label:'Before',data:before,backgroundColor:'rgba(234,17,0,.6)',borderRadius:3},
+      {label:'After', data:after, backgroundColor:'rgba(42,135,3,.6)', borderRadius:3},
+    ]},
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{position:'top',labels:{font:{size:10}}}},
+      scales:{
+        y:{min:0,max:100,ticks:{callback:v=>v+'%',font:{size:10}},grid:{color:'#f0f0f0'}},
+        x:{ticks:{font:{size:9}}}
+      }
+    }
+  });
+}
+
+function _renderTgCodesChart(data) {
+  const codeCounts={};
+  data.forEach(d=>{
+    const c=(d.Problem_code_desc||'Unknown').trim();
+    codeCounts[c]=(codeCounts[c]||0)+1;
+  });
+  const sorted=Object.entries(codeCounts).sort((a,b)=>b[1]-a[1]).slice(0,15);
+  const ctx=document.getElementById('chart-tg-codes')?.getContext('2d');
+  if(!ctx) return;
+  if(_tgCodesChart) _tgCodesChart.destroy();
+  _tgCodesChart=new Chart(ctx,{
+    type:'bar',
+    data:{labels:sorted.map(([k])=>k.length>35?k.slice(0,35)+'…':k),
+      datasets:[{label:'Engagements',data:sorted.map(([,v])=>v),backgroundColor:'#ffc220',borderRadius:4}]},
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false}},
+      scales:{
+        y:{ticks:{font:{size:10}},grid:{color:'#f0f0f0'}},
+        x:{ticks:{font:{size:8},maxRotation:40}}
+      }
+    }
+  });
+}
+
+function _renderTgTable(data) {
+  const sorted=[...data].sort((a,b)=>(b.Call_Date||'').localeCompare(a.Call_Date||''));
+  const tbody=document.getElementById('tg-table-body');
+  if(!tbody) return;
+  tbody.innerHTML=sorted.map((d,i)=>{
+    const woRed=parseFloat(d.pct_reduction_wo||0);
+    const tntDiff=parseFloat(d.pct_diff_tnt||0);
+    return `<tr class="hover:bg-wmt-gray10 ${i%2===0?'':'bg-gray-50/50'}">
+      <td class="px-3 py-2 font-mono font-semibold">${d.Store_nbr||'—'}</td>
+      <td class="px-3 py-2">${d.FM_Sr_Director||'—'}</td>
+      <td class="px-3 py-2">${d.FM_Director||'—'}</td>
+      <td class="px-3 py-2">${d.FM_Regional_Mgr||'—'}</td>
+      <td class="px-3 py-2 max-w-[140px] truncate" title="${d.Problem_code_desc||''}">${(d.Problem_code_desc||'—').slice(0,40)}</td>
+      <td class="px-3 py-2 text-right whitespace-nowrap">${d.Call_Date||'—'}</td>
+      <td class="px-3 py-2 text-right">${d.Project_duration_in_days||'—'}</td>
+      <td class="px-3 py-2 text-right">${fmt(d.Before_Workorders)}</td>
+      <td class="px-3 py-2 text-right">${fmt(d.After_Workorders)}</td>
+      <td class="px-3 py-2 text-right font-semibold ${woRed>0?'text-green-700':woRed<0?'text-wmt-red':''}">${d.pct_reduction_wo!=null?pct(woRed):'—'}</td>
+      <td class="px-3 py-2 text-right">${d.Time_in_Target_Before!=null?pct(parseFloat(d.Time_in_Target_Before)*100):'—'}</td>
+      <td class="px-3 py-2 text-right">${d.Time_in_Target_After!=null?pct(parseFloat(d.Time_in_Target_After)*100):'—'}</td>
+      <td class="px-3 py-2 text-right font-semibold ${tntDiff>0?'text-green-700':tntDiff<0?'text-wmt-red':''}">${d.pct_diff_tnt!=null?pct(tntDiff):'—'}</td>
+      <td class="px-3 py-2 text-right">${d.Status||'—'}</td>
+    </tr>`;
+  }).join('');
+}
+
+function exportTopGunTable() {
+  const hdr='Store,Sr Director,Director,RM,Problem Code,Call Date,Duration,WOs Before,WOs After,WO Reduction %,TnT Before,TnT After,TnT Diff %,Status\n';
+  const csv=hdr+(TOP_GUN||[]).map(d=>[
+    d.Store_nbr,d.FM_Sr_Director,d.FM_Director,d.FM_Regional_Mgr,
+    (d.Problem_code_desc||'').replace(/,/g,';'),d.Call_Date,
+    d.Project_duration_in_days,d.Before_Workorders,d.After_Workorders,
+    d.pct_reduction_wo,d.Time_in_Target_Before,d.Time_in_Target_After,
+    d.pct_diff_tnt,d.Status
+  ].join(',')).join('\n');
+  const a=document.createElement('a');
+  a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv);
+  a.download='hvacr_topgun_engagements.csv';
+  a.click();
+}
+</script>
+
+<!-- ====== FOOTER / GLOBAL SEARCH / INIT ====== -->
+<footer class="mt-10 border-t border-gray-200 bg-white py-4 text-center text-xs text-wmt-gray100">
+  HVACR Training Dashboard &nbsp;·&nbsp; Walmart Facility Services
+  &nbsp;·&nbsp; Data: BigQuery + Tableau
+  &nbsp;·&nbsp; <span id="footer-updated"></span>
+</footer>
+
+<script>
+// ── Global search ───────────────────────────────────────────────────────────
+function onGlobalSearch(q) {
+  if (!q || q.length < 2) return;
+  q = q.toLowerCase();
+  // Search store in WO data -> jump to WO tab + filter
+  const matchStore = (TRAINING_WOS||[]).find(w => String(w.store_nbr||'').includes(q));
+  if (matchStore) { setTab('workorders'); return; }
+  // Search tech name -> jump to technicians tab
+  const matchTech = (TECH_ALIGNMENT||[]).find(t =>
+    (`${t.first_name} ${t.last_name}`).toLowerCase().includes(q));
+  if (matchTech) { setTab('technicians'); return; }
+  // Search org name -> jump to overview
+  const matchOrg = (TECH_STORES||[]).find(ts =>
+    (ts.sr_director||'').toLowerCase().includes(q) ||
+    (ts.director||'').toLowerCase().includes(q) ||
+    (ts.rm||'').toLowerCase().includes(q));
+  if (matchOrg) { setTab('overview'); return; }
+}
+
+// ── Init ───────────────────────────────────────────────────────────────────
+window.addEventListener('DOMContentLoaded', () => {
+  // Set updated timestamp from embedded metadata
+  const updEl = document.getElementById('hdr-updated');
+  const ftEl  = document.getElementById('footer-updated');
+  if (typeof DASHBOARD_UPDATED !== 'undefined') {
+    if (updEl) updEl.textContent = 'Updated: ' + DASHBOARD_UPDATED;
+    if (ftEl)  ftEl.textContent  = 'Updated: ' + DASHBOARD_UPDATED;
+  }
+
+  // Initial tab render
+  render_overview();
+});
+</script>
+</body>
+</html>

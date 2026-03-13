@@ -1,0 +1,103 @@
+<!-- ====== TECHNICIANS TAB ====== -->
+<div id="tab-technicians" class="tab-panel">
+  <div class="max-w-screen-2xl mx-auto px-4 py-5 space-y-6">
+
+    <!-- KPI row -->
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-4" id="tech-kpis"></div>
+
+    <!-- Row: Level distribution + Exam pass by type -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div class="bg-white rounded-xl shadow p-4">
+        <h2 class="font-semibold text-sm mb-3">Technician Level Distribution</h2>
+        <div style="height:250px;"><canvas id="chart-tech-levels"></canvas></div>
+      </div>
+      <div class="bg-white rounded-xl shadow p-4">
+        <h2 class="font-semibold text-sm mb-3">Exam Pass Rate by Test Type</h2>
+        <div style="height:250px;"><canvas id="chart-exam-by-type"></canvas></div>
+      </div>
+    </div>
+
+    <!-- Filters -->
+    <div class="bg-white rounded-xl shadow p-4">
+      <div class="flex flex-wrap gap-3 items-end">
+        <div>
+          <label class="text-xs text-wmt-gray100 block mb-1">Sr Director</label>
+          <select id="tech-sr-filter" onchange="render_technicians()"
+                  class="text-xs border rounded px-2 py-1.5 min-w-[160px]">
+            <option value="">All</option>
+          </select>
+        </div>
+        <div>
+          <label class="text-xs text-wmt-gray100 block mb-1">Tech Level</label>
+          <select id="tech-level-filter" onchange="render_technicians()"
+                  class="text-xs border rounded px-2 py-1.5">
+            <option value="">All Levels</option>
+          </select>
+        </div>
+        <div>
+          <label class="text-xs text-wmt-gray100 block mb-1">Exam Result</label>
+          <select id="tech-exam-filter" onchange="render_technicians()"
+                  class="text-xs border rounded px-2 py-1.5">
+            <option value="">All</option>
+            <option value="pass">Pass</option>
+            <option value="fail">Fail</option>
+            <option value="none">No Exam on File</option>
+          </select>
+        </div>
+        <button onclick="exportTechTable()"
+                class="text-xs bg-wmt-blue text-white rounded px-3 py-1.5">↓ CSV</button>
+      </div>
+    </div>
+
+    <!-- Tech roster table -->
+    <div class="bg-white rounded-xl shadow overflow-hidden">
+      <div class="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+        <h2 class="font-semibold text-sm">Technician Roster & Training Status</h2>
+        <span class="text-xs text-wmt-gray100" id="tech-count-label"></span>
+      </div>
+      <div class="overflow-auto max-h-[500px]">
+        <table class="w-full text-xs sticky-head">
+          <thead class="bg-wmt-gray10 text-wmt-gray100 font-semibold">
+            <tr>
+              <th class="px-3 py-2 text-left">Technician</th>
+              <th class="px-3 py-2 text-left">Level</th>
+              <th class="px-3 py-2 text-left">Role</th>
+              <th class="px-3 py-2 text-left">Home Store</th>
+              <th class="px-3 py-2 text-left">Sr Director</th>
+              <th class="px-3 py-2 text-right">Latest Exam</th>
+              <th class="px-3 py-2 text-right">Score</th>
+              <th class="px-3 py-2 text-right">Result</th>
+              <th class="px-3 py-2 text-right">Attempts</th>
+              <th class="px-3 py-2 text-right">EPA Valid</th>
+            </tr>
+          </thead>
+          <tbody id="tech-table-body" class="divide-y divide-gray-100"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- High-risk techs: failed or no exam -->
+    <div class="bg-white rounded-xl shadow overflow-hidden">
+      <div class="px-4 py-3 border-b border-gray-100">
+        <h2 class="font-semibold text-sm text-wmt-red">
+          ⚠️ High-Priority: Failed or No Exam on Record
+        </h2>
+      </div>
+      <div class="overflow-auto max-h-64">
+        <table class="w text-xs sticky-head">
+          <thead class="bg-red-50 text-wmt-red font-semibold">
+            <tr>
+              <th class="px-3 py-2 text-left">Technician</th>
+              <th class="px-3 py-2 text-left">Level</th>
+              <th class="px-3 py-2 text-left">Home Store</th>
+              <th class="px-3 py-2 text-left">Manager</th>
+              <th class="px-3 py-2 text-right">Issue</th>
+            </tr>
+          </thead>
+          <tbody id="high-risk-tech-body" class="divide-y divide-red-50"></tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+</div>

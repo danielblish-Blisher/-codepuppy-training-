@@ -1,0 +1,57 @@
+<!-- ====== TOP GUN TAB ====== -->
+<div id="tab-topgun" class="tab-panel">
+  <div class="max-w-screen-2xl mx-auto px-4 py-5 space-y-6">
+
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-4" id="tg-kpis"></div>
+
+    <!-- Before / After charts -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div class="bg-white rounded-xl shadow p-4">
+        <h2 class="font-semibold text-sm mb-3">WO Reduction: Before vs After Top Gun</h2>
+        <div style="height:280px;"><canvas id="chart-tg-wo"></canvas></div>
+      </div>
+      <div class="bg-white rounded-xl shadow p-4">
+        <h2 class="font-semibold text-sm mb-3">Time-in-Target: Before vs After Top Gun</h2>
+        <div style="height:280px;"><canvas id="chart-tg-tnt"></canvas></div>
+      </div>
+    </div>
+
+    <!-- Problem code breakdown -->
+    <div class="bg-white rounded-xl shadow p-4">
+      <h2 class="font-semibold text-sm mb-3">Top Gun Engagements by Problem Code</h2>
+      <div style="height:240px;"><canvas id="chart-tg-codes"></canvas></div>
+    </div>
+
+    <!-- Top Gun detail table -->
+    <div class="bg-white rounded-xl shadow overflow-hidden">
+      <div class="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+        <h2 class="font-semibold text-sm">Top Gun Engagement Log</h2>
+        <button onclick="exportTopGunTable()" class="text-xs bg-wmt-blue text-white rounded px-2 py-1">↓ CSV</button>
+      </div>
+      <div class="overflow-auto max-h-[500px]">
+        <table class="w-full text-xs sticky-head">
+          <thead class="bg-wmt-gray10 text-wmt-gray100 font-semibold">
+            <tr>
+              <th class="px-3 py-2 text-left">Store</th>
+              <th class="px-3 py-2 text-left">Sr Director</th>
+              <th class="px-3 py-2 text-left">Director</th>
+              <th class="px-3 py-2 text-left">RM</th>
+              <th class="px-3 py-2 text-left">Problem Code</th>
+              <th class="px-3 py-2 text-right">Call Date</th>
+              <th class="px-3 py-2 text-right">Duration (d)</th>
+              <th class="px-3 py-2 text-right">WOs Before</th>
+              <th class="px-3 py-2 text-right">WOs After</th>
+              <th class="px-3 py-2 text-right">WO Reduction</th>
+              <th class="px-3 py-2 text-right">TnT Before</th>
+              <th class="px-3 py-2 text-right">TnT After</th>
+              <th class="px-3 py-2 text-right">TnT Δ</th>
+              <th class="px-3 py-2 text-right">Status</th>
+            </tr>
+          </thead>
+          <tbody id="tg-table-body" class="divide-y divide-gray-100"></tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+</div>

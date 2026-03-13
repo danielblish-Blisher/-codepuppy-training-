@@ -1,0 +1,393 @@
+<!-- ====== OVERVIEW JS ====== -->
+<script>
+// ── Training Gap Score Engine ───────────────────────────────────────────
+//
+// Score 0-100 per store (higher = more training needed)
+// Weights: FCR(40%) + SLA(20%) + Repeat WO(20%) + AvgTrips(10%) + EPA(10%)
+//
+
+let _storeScores = null;   // cached store-level scores
+let _orgScores   = null;   // cached director-level rollup
+
+function _computeStoreScores() {
+  if (_storeScores) return _storeScores;
+
+  // Build EPA compliance lookup by store (from TECH_STORES + EPA_CERTS)
+  const epaValidIds = new Set();
+  const today = new Date();
+  (EPA_CERTS || []).forEach(c => {
+    if (!c.expiry_date || c.user_status !== 'Active') return;
+    const exp = new Date(c.expiry_date);
+    if (exp > today) epaValidIds.add(String(c.user_id || '').toLowerCase());
+  });
+
+  // Tech EPA compliance by store
+  const storeEpaTotal  = {};
+  const storeEpaValid  = {};
+  (TECH_STORES || []).forEach(ts => {
+    const sn = String(ts.store_nbr || '');
+    if (!sn) return;
+    storeEpaTotal[sn] = (storeEpaTotal[sn] || 0) + 1;
+    const uid = String(ts.user_id || '').toLowerCase();
+    if (epaValidIds.has(uid)) storeEpaValid[sn] = (storeEpaValid[sn] || 0) + 1;
+  });
+
+  // WO metrics per store
+  const byStore = {};
+  (TRAINING_WOS || []).forEach(w => {
+    const sn = String(w.store_nbr || '');
+    if (!sn) return;
+    // Banner filter
+    if (BANNER_FILTER === 'walmart' && w.store_type === 'sams') return;
+    if (BANNER_FILTER === 'sams'    && w.store_type !== 'sams') return;
+
+    if (!byStore[sn]) byStore[sn] = {
+      sn, sr: w.sr_director||'', dir: w.director||'', rm: w.rm||'',
+      store_type: w.store_type||'',
+      fcr_total:0, fcr_fail:0,
+      sla_total:0, sla_fail:0,
+      trip_sum:0,  trip_count_n:0,
+      wo_total:0,
+      prob_counts: {},
+    };
+    const s = byStore[sn];
+    s.wo_total++;
+
+    // FCR
+    const fcr = (w.first_time_fix_compliance||'').toUpperCase();
+    if (fcr === 'Y' || fcr === 'N') { s.fcr_total++; if (fcr === 'N') s.fcr_fail++; }
+
+    // SLA
+    const sla = (w.sla_repair_compliance||'').toUpperCase();
+    if (sla === 'Y' || sla === 'N') { s.sla_total++; if (sla === 'N') s.sla_fail++; }
+
+    // Trips
+    const trips = parseFloat(w.trip_count || 0);
+    if (trips > 0) { s.trip_sum += trips; s.trip_count_n++; }
+
+    // Repeat WO tracking by problem code
+    const prob = (w.problem_code_desc || 'Unknown').trim();
+    s.prob_counts[prob] = (s.prob_counts[prob] || 0) + 1;
+  });
+
+  // Compute scores
+  _storeScores = {};
+  Object.values(byStore).forEach(s => {
+    const fcrRate   = s.fcr_total  > 0 ? s.fcr_fail / s.fcr_total  : null;
+    const slaRate   = s.sla_total  > 0 ? s.sla_fail / s.sla_total  : null;
+    const avgTrips  = s.trip_count_n > 0 ? s.trip_sum / s.trip_count_n : null;
+    // Repeat: % of WOs that are a repeat problem code (count >1 for that store)
+    const repeatProbs = Object.values(s.prob_counts).filter(n => n > 1);
+    const repeatWos  = repeatProbs.reduce((a, n) => a + n, 0);
+    const repeatRate = s.wo_total > 0 ? repeatWos / s.wo_total : null;
+    // EPA
+    const epaTotal = storeEpaTotal[s.sn] || 0;
+    const epaValid = storeEpaValid[s.sn] || 0;
+    const epaMissRate = epaTotal > 0 ? 1 - (epaValid / epaTotal) : null;
+    // Trip excess: scale 0-1 where avg >3 trips = 1.0
+    const tripExcess = avgTrips != null ? Math.min((avgTrips - 1) / 2, 1) : null;
+
+    // Weighted score (only include components with data)
+    let score = null, totalW = 0;
+    const add = (val, w) => {
+      if (val == null) return;
+      score = (score || 0) + val * w;
+      totalW += w;
+    };
+    add(fcrRate,   0.40);
+    add(slaRate,   0.20);
+    add(repeatRate,0.20);
+    add(tripExcess,0.10);
+    add(epaMissRate,0.10);
+    if (totalW > 0) score = (score / totalW) * 100;
+
+    _storeScores[s.sn] = {
+      ...s,
+      fcrRate, slaRate, repeatRate, avgTrips, epaMissRate,
+      score,
+      epaTotal, epaValid,
+    };
+  });
+  return _storeScores;
+}
+
+function _computeOrgScores(storeScores) {
+  if (_orgScores) return _orgScores;
+  const dirs = {};
+  Object.values(storeScores).forEach(s => {
+    const key = `${s.sr}||${s.dir}`;
+    if (!dirs[key]) dirs[key] = {
+      sr: s.sr, dir: s.dir,
+      scores:[], fcr:[], sla:[], repeat:[], epaT:0, epaV:0, wo:0
+    };
+    const d = dirs[key];
+    if (s.score != null) d.scores.push(s.score);
+    if (s.fcrRate != null) d.fcr.push(s.fcrRate);
+    if (s.slaRate != null) d.sla.push(s.slaRate);
+    if (s.repeatRate != null) d.repeat.push(s.repeatRate);
+    d.epaT += s.epaTotal;
+    d.epaV += s.epaValid;
+    d.wo   += s.wo_total;
+  });
+  const avg = arr => arr.length ? arr.reduce((a,b)=>a+b,0)/arr.length : null;
+  _orgScores = Object.values(dirs).map(d => ({
+    ...d,
+    score: avg(d.scores),
+    fcrRate: avg(d.fcr),
+    slaRate: avg(d.sla),
+    repeatRate: avg(d.repeat),
+    epaPct: d.epaT > 0 ? d.epaV/d.epaT : null,
+    storeCount: d.scores.length,
+  })).sort((a,b) => (b.score||0)-(a.score||0));
+  return _orgScores;
+}
+
+// ── Charts ───────────────────────────────────────────────────────────
+let _srChart = null;
+let _examChart = null;
+let _distChart = null;
+
+function _renderSrChart(orgScores) {
+  // Group by Sr Director
+  const srMap = {};
+  orgScores.forEach(d => {
+    if (!d.sr) return;
+    if (!srMap[d.sr]) srMap[d.sr] = [];
+    if (d.score != null) srMap[d.sr].push(d.score);
+  });
+  const labels = Object.keys(srMap).sort((a,b) => {
+    const as = srMap[a].reduce((x,y)=>x+y,0)/srMap[a].length;
+    const bs = srMap[b].reduce((x,y)=>x+y,0)/srMap[b].length;
+    return bs - as;
+  }).slice(0,20);
+  const data = labels.map(l => {
+    const arr = srMap[l];
+    return arr.length ? arr.reduce((a,b)=>a+b,0)/arr.length : 0;
+  });
+  const colors = data.map(v => v>=70?'#ea1100':v>=40?'#ffc220':'#2a8703');
+
+  const ctx = document.getElementById('chart-sr-gap')?.getContext('2d');
+  if (!ctx) return;
+  if (_srChart) _srChart.destroy();
+  _srChart = new Chart(ctx, {
+    type: 'bar',
+    data: { labels, datasets: [{ label: 'Gap Score', data, backgroundColor: colors, borderRadius:4 }] },
+    options: {
+      responsive: true, maintainAspectRatio: false, indexAxis: 'y',
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { min:0, max:100, grid:{ color:'#f0f0f0' }, ticks:{ font:{size:10} } },
+        y: { ticks: { font:{size:9}, callback: v => v.length>22?v.slice(0,22)+'…':v } }
+      }
+    }
+  });
+}
+
+function _renderExamTrend() {
+  // Roll up exam pass rate by fiscal week
+  const weekMap = {};
+  (EXAM_REG || []).forEach(e => {
+    const yr  = e.wmt_year_nbr;
+    const wk  = e.wmt_week_of_year_nbr;
+    if (!yr || !wk) return;
+    const key = `FY${yr}-W${String(wk).padStart(2,'0')}`;
+    if (!weekMap[key]) weekMap[key] = { pass:0, total:0 };
+    weekMap[key].total++;
+    if ((e.Result||'').toLowerCase().includes('pass')) weekMap[key].pass++;
+  });
+  const labels = Object.keys(weekMap).sort().slice(-24);
+  const data   = labels.map(k => {
+    const v = weekMap[k];
+    return v.total > 0 ? (v.pass/v.total)*100 : null;
+  });
+  const ctx = document.getElementById('chart-exam-trend')?.getContext('2d');
+  if (!ctx) return;
+  if (_examChart) _examChart.destroy();
+  _examChart = new Chart(ctx, {
+    type: 'line',
+    data: { labels, datasets: [{
+      label: 'Pass Rate %', data,
+      borderColor: '#0053e2', backgroundColor: 'rgba(0,83,226,.08)',
+      tension: 0.3, fill: true, pointRadius: 3,
+    }] },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        y: { min:0, max:100, ticks:{ callback: v=>v+'%', font:{size:10} }, grid:{color:'#f0f0f0'} },
+        x: { ticks: { font:{size:9}, maxRotation:45 } }
+      }
+    }
+  });
+}
+
+function _renderDistChart(storeScores) {
+  const high = Object.values(storeScores).filter(s => s.score >= 70).length;
+  const med  = Object.values(storeScores).filter(s => s.score >= 40 && s.score < 70).length;
+  const low  = Object.values(storeScores).filter(s => s.score != null && s.score < 40).length;
+  const na   = Object.values(storeScores).filter(s => s.score == null).length;
+  const ctx = document.getElementById('chart-score-dist')?.getContext('2d');
+  if (!ctx) return;
+  if (_distChart) _distChart.destroy();
+  _distChart = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels: ['High Need (70+)', 'Med Need (40-69)', 'Low Need (<40)', 'No Data'],
+      datasets: [{ data:[high,med,low,na],
+        backgroundColor:['#ea1100','#ffc220','#2a8703','#c2c2c2'],
+        borderWidth:2, borderColor:'#fff'
+      }]
+    },
+    options: {
+      responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{display:false} }
+    }
+  });
+  document.getElementById('score-dist-legend').innerHTML = [
+    ['High Need (70+)', high, 'text-wmt-red'],
+    ['Med Need (40-69)', med, 'text-wmt-warn'],
+    ['Low Need (<40)',  low, 'text-green-700'],
+    ['No Data',        na,  'text-wmt-gray100'],
+  ].map(([l,n,c])=>`<div class="flex justify-between"><span class="${c}">${l}</span><span class="font-bold">${n}</span></div>`).join('');
+}
+
+// ── Tables ───────────────────────────────────────────────────────────
+function _renderStoreTable(storeScores, srFilter) {
+  const rows = Object.values(storeScores)
+    .filter(s => !srFilter || s.sr === srFilter)
+    .filter(s => s.score != null)
+    .sort((a,b) => (b.score||0)-(a.score||0))
+    .slice(0, 50);
+  const tbody = document.getElementById('overview-table-body');
+  if (!tbody) return;
+  tbody.innerHTML = rows.map((s,i) => `
+    <tr class="hover:bg-wmt-gray10 ${i%2===0?'':'bg-gray-50/50'}">
+      <td class="px-3 py-2 text-wmt-gray100">${i+1}</td>
+      <td class="px-3 py-2 font-mono font-semibold">${s.sn}</td>
+      <td class="px-3 py-2">${s.sr||'—'}</td>
+      <td class="px-3 py-2">${s.dir||'—'}</td>
+      <td class="px-3 py-2">${s.rm||'—'}</td>
+      <td class="px-3 py-2 text-right">${scorePill(s.score)}</td>
+      <td class="px-3 py-2 text-right ${s.fcrRate>0.3?'text-wmt-red font-semibold':''}">${
+        s.fcrRate!=null ? pct((1-s.fcrRate)*100) : '—'}</td>
+      <td class="px-3 py-2 text-right ${s.slaRate>0.3?'text-wmt-red font-semibold':''}">${
+        s.slaRate!=null ? pct((1-s.slaRate)*100) : '—'}</td>
+      <td class="px-3 py-2 text-right">${s.repeatRate!=null?pct(s.repeatRate*100):'—'}</td>
+      <td class="px-3 py-2 text-right">${fmt(s.wo_total)}</td>
+    </tr>`).join('');
+}
+
+function _renderDirectorTable(orgScores) {
+  // Exam pass by director (from EXAM_REG - match by sr/dir name)
+  const examByDir = {};
+  (EXAM_REG||[]).forEach(e => {
+    // Can't directly join; we'll skip exam column here
+  });
+  const tbody = document.getElementById('director-table-body');
+  if (!tbody) return;
+  tbody.innerHTML = orgScores.map((d,i) => `
+    <tr class="hover:bg-wmt-gray10 ${i%2===0?'':'bg-gray-50/50'}">
+      <td class="px-3 py-2">${d.sr||'—'}</td>
+      <td class="px-3 py-2 font-semibold">${d.dir||'—'}</td>
+      <td class="px-3 py-2 text-right">${fmt(d.storeCount)}</td>
+      <td class="px-3 py-2 text-right">${scorePill(d.score)}</td>
+      <td class="px-3 py-2 text-right ${d.fcrRate>0.3?'text-wmt-red font-semibold':''}">${
+        d.fcrRate!=null?pct((1-d.fcrRate)*100):'—'}</td>
+      <td class="px-3 py-2 text-right ${d.slaRate>0.3?'text-wmt-red font-semibold':''}">${
+        d.slaRate!=null?pct((1-d.slaRate)*100):'—'}</td>
+      <td class="px-3 py-2 text-right">${d.repeatRate!=null?pct(d.repeatRate*100):'—'}</td>
+      <td class="px-3 py-2 text-right">${d.epaPct!=null?pct(d.epaPct*100):'—'}</td>
+      <td class="px-3 py-2 text-right">—</td>
+      <td class="px-3 py-2 text-right">${fmt(d.wo)}</td>
+    </tr>`).join('');
+}
+
+function _renderKpis(storeScores) {
+  const scores   = Object.values(storeScores).map(s=>s.score).filter(s=>s!=null);
+  const avgScore = scores.length ? scores.reduce((a,b)=>a+b,0)/scores.length : null;
+  const allWos   = (TRAINING_WOS||[]);
+  const fcrWos   = allWos.filter(w=>(w.first_time_fix_compliance||'').toUpperCase()==='Y');
+  const fcrRate  = allWos.length ? fcrWos.length/allWos.length : null;
+  const slaWos   = allWos.filter(w=>(w.sla_repair_compliance||'').toUpperCase()==='Y');
+  const slaRate  = allWos.length ? slaWos.length/allWos.length : null;
+  const techTotal = (TECH_ALIGNMENT||[]).length;
+  const epaTot   = (EPA_CERTS||[]).length;
+  const today    = new Date();
+  const epaValid = (EPA_CERTS||[]).filter(c=>c.expiry_date && new Date(c.expiry_date)>today).length;
+  const epaPct   = epaTot ? epaValid/epaTot : null;
+
+  const cards = [
+    { label:'Active Techs',      val: fmt(techTotal),       sub:'in alignment',      color:'text-wmt-blue' },
+    { label:'Avg Gap Score',     val: avgScore!=null?Math.round(avgScore)+'':'—', sub:'0=none · 100=critical', color: avgScore>=70?'text-wmt-red':avgScore>=40?'text-yellow-600':'text-green-700' },
+    { label:'First-Call Fix',    val: fcrRate!=null?pct(fcrRate*100):'—', sub:'HVACR WOs (18mo)', color: fcrRate<0.7?'text-wmt-red':'text-green-700' },
+    { label:'SLA Compliance',    val: slaRate!=null?pct(slaRate*100):'—', sub:'repair on time',  color: slaRate<0.7?'text-wmt-red':'text-green-700' },
+    { label:'EPA Cert Valid',    val: epaPct!=null?pct(epaPct*100):'—',  sub:`${fmt(epaValid)} of ${fmt(epaTot)}`, color: epaPct<0.9?'text-wmt-red':'text-green-700' },
+  ];
+  document.getElementById('overview-kpis').innerHTML = cards.map(c=>`
+    <div class="kpi-card bg-white rounded-xl shadow p-4">
+      <div class="text-xs text-wmt-gray100 font-medium mb-1">${c.label}</div>
+      <div class="text-2xl font-black ${c.color}">${c.val}</div>
+      <div class="text-xs text-wmt-gray100 mt-1">${c.sub}</div>
+    </div>`).join('');
+}
+
+function _renderInsight(storeScores, orgScores) {
+  const highNeed = Object.values(storeScores).filter(s=>s.score>=70).length;
+  const topSr = orgScores[0];
+  const woCount = (TRAINING_WOS||[]).length;
+  document.getElementById('overview-insight').innerHTML = `
+    <strong>💡 Training Intelligence Summary:</strong>
+    Analyzing <strong>${fmt(woCount)}</strong> HVACR work orders over the last 18 months across
+    <strong>${fmt(Object.keys(storeScores).length)}</strong> stores.
+    <strong>${fmt(highNeed)}</strong> stores have a High Training Need score (≥70).
+    ${topSr ? `Sr Director <strong>${topSr.sr}</strong> has the highest average gap score
+    (<strong>${Math.round(topSr.score||0)}</strong>) across their ${topSr.storeCount} stores.`:''}
+    Use the filters and tabs above to drill into specific technicians, EPA certifications,
+    field observations, and Top Gun outcomes.`;
+}
+
+function _populateSrFilter(storeScores) {
+  const sel = document.getElementById('ov-sr-filter');
+  if (!sel) return;
+  const srs = [...new Set(Object.values(storeScores).map(s=>s.sr).filter(Boolean))].sort();
+  sel.innerHTML = `<option value="">All Sr Directors</option>` +
+    srs.map(s=>`<option value="${s}">${s}</option>`).join('');
+}
+
+// ── Main render ───────────────────────────────────────────────────────────
+function render_overview() {
+  _storeScores = null;  // invalidate cache on filter change
+  _orgScores   = null;
+  const storeScores = _computeStoreScores();
+  const orgScores   = _computeOrgScores(storeScores);
+  const srFilter    = document.getElementById('ov-sr-filter')?.value || '';
+
+  _renderKpis(storeScores);
+  _renderInsight(storeScores, orgScores);
+  _renderSrChart(orgScores);
+  _renderExamTrend();
+  _renderDistChart(storeScores);
+  _populateSrFilter(storeScores);
+  _renderStoreTable(storeScores, srFilter);
+  _renderDirectorTable(orgScores);
+}
+
+// Export
+function exportOverviewTable() {
+  const storeScores = _computeStoreScores();
+  const rows = Object.values(storeScores).sort((a,b)=>(b.score||0)-(a.score||0));
+  const header = 'Store,Sr Director,Director,RM,Gap Score,FCR %,SLA %,Repeat %,WOs\n';
+  const csv = header + rows.map(s => [
+    s.sn, s.sr, s.dir, s.rm,
+    s.score!=null?Math.round(s.score):'',
+    s.fcrRate!=null?((1-s.fcrRate)*100).toFixed(1):'',
+    s.slaRate!=null?((1-s.slaRate)*100).toFixed(1):'',
+    s.repeatRate!=null?(s.repeatRate*100).toFixed(1):'',
+    s.wo_total,
+  ].join(',')).join('\n');
+  const a = document.createElement('a');
+  a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+  a.download = 'hvacr_training_gap_scores.csv';
+  a.click();
+}
+</script>

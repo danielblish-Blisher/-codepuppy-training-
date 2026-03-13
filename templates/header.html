@@ -1,0 +1,61 @@
+<!-- ====== TOP HEADER ====== -->
+<header class="bg-wmt-blue shadow-md sticky top-0 z-50">
+  <div class="max-w-screen-2xl mx-auto px-4 py-2 flex items-center justify-between gap-4 flex-wrap">
+
+    <!-- Logo + Title -->
+    <div class="flex items-center gap-3">
+      <div class="w-8 h-8 rounded-full bg-wmt-spark flex items-center justify-center">
+        <span class="text-wmt-gray160 font-black text-sm">WM</span>
+      </div>
+      <div>
+        <div class="text-white font-bold text-base leading-tight">HVACR Training Dashboard</div>
+        <div class="text-blue-200 text-xs" id="hdr-updated">Loading…</div>
+      </div>
+    </div>
+
+    <!-- Banner toggle -->
+    <div class="flex rounded overflow-hidden border border-blue-400 text-sm">
+      <button class="banner-btn px-3 py-1 bg-wmt-blue text-white" data-banner="all"
+              onclick="setBanner('all')">All</button>
+      <button class="banner-btn px-3 py-1 bg-white text-wmt-gray160" data-banner="walmart"
+              onclick="setBanner('walmart')">Walmart</button>
+      <button class="banner-btn px-3 py-1 bg-white text-wmt-gray160" data-banner="sams"
+              onclick="setBanner('sams')">Sam's</button>
+    </div>
+
+    <!-- Quick search -->
+    <div class="flex-1 min-w-[200px] max-w-xs">
+      <input id="global-search" type="text" placeholder="Search store, tech, manager…"
+             class="w-full rounded px-3 py-1.5 text-sm border border-blue-400 bg-blue-900
+                    text-white placeholder-blue-300 focus:outline-none focus:ring-2 focus:ring-wmt-spark"
+             oninput="onGlobalSearch(this.value)" />
+    </div>
+
+  </div>
+
+  <!-- Tab nav -->
+  <div class="bg-white border-b border-gray-200 overflow-x-auto">
+    <div class="max-w-screen-2xl mx-auto px-4 flex gap-1 text-sm whitespace-nowrap">
+      <button class="tab-btn active px-4 py-2.5 text-wmt-gray160 hover:text-wmt-blue transition-colors"
+              data-tab="overview" onclick="setTab('overview')">Overview</button>
+      <button class="tab-btn px-4 py-2.5 text-wmt-gray160 hover:text-wmt-blue transition-colors"
+              data-tab="technicians" onclick="setTab('technicians')">Technicians</button>
+      <button class="tab-btn px-4 py-2.5 text-wmt-gray160 hover:text-wmt-blue transition-colors"
+              data-tab="workorders" onclick="setTab('workorders')">WO Performance</button>
+      <button class="tab-btn px-4 py-2.5 text-wmt-gray160 hover:text-wmt-blue transition-colors"
+              data-tab="observations" onclick="setTab('observations')">Field Observations</button>
+      <button class="tab-btn px-4 py-2.5 text-wmt-gray160 hover:text-wmt-blue transition-colors"
+              data-tab="epa" onclick="setTab('epa')">EPA Certs</button>
+      <button class="tab-btn px-4 py-2.5 text-wmt-gray160 hover:text-wmt-blue transition-colors"
+              data-tab="topgun" onclick="setTab('topgun')">Top Gun</button>
+    </div>
+  </div>
+</header>
+
+<script>
+  // Initialize banner state
+  document.addEventListener('DOMContentLoaded', () => {
+    setBanner('all');
+    setTab('overview');
+  });
+</script>

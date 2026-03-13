@@ -1,0 +1,141 @@
+<!-- ====== EPA CERTS JS ====== -->
+<script>
+let _epaStatusChart=null, _epaTypesChart=null;
+
+function render_epa() {
+  const statusFilt = document.getElementById('epa-status-filter')?.value||'';
+  const today = new Date();
+  const in90  = new Date(today); in90.setDate(in90.getDate()+90);
+
+  const enriched = (EPA_CERTS||[]).map(c => {
+    const exp = c.expiry_date ? new Date(c.expiry_date) : null;
+    let certStatus = 'no-date';
+    if (exp) {
+      if (exp < today)       certStatus = 'expired';
+      else if (exp <= in90)  certStatus = 'expiring';
+      else                   certStatus = 'valid';
+    }
+    return {...c, certStatus, expDate: exp};
+  });
+
+  const filtered = enriched.filter(c => {
+    if (!statusFilt) return true;
+    return c.certStatus === statusFilt;
+  });
+
+  _renderEpaKpis(enriched);
+  _renderEpaStatusChart(enriched);
+  _renderEpaTypesChart(enriched);
+  _renderEpaExpiring(enriched.filter(c=>c.certStatus==='expiring'));
+  _renderEpaTable(filtered);
+}
+
+function _renderEpaKpis(certs) {
+  const total    = certs.length;
+  const valid    = certs.filter(c=>c.certStatus==='valid').length;
+  const expiring = certs.filter(c=>c.certStatus==='expiring').length;
+  const expired  = certs.filter(c=>c.certStatus==='expired').length;
+  document.getElementById('epa-kpis').innerHTML = [
+    {label:'Total Certs',    val:fmt(total),    sub:'in registry',          color:'text-wmt-blue'},
+    {label:'Valid',          val:fmt(valid),    sub:pct(total?valid/total*100:0), color:'text-green-700'},
+    {label:'Expiring (90d)', val:fmt(expiring), sub:'action required',      color:expiring>0?'text-yellow-600':'text-green-700'},
+    {label:'Expired',        val:fmt(expired),  sub:'compliance risk',      color:expired>0?'text-wmt-red':'text-green-700'},
+  ].map(c=>`<div class="kpi-card bg-white rounded-xl shadow p-4">
+    <div class="text-xs text-wmt-gray100 mb-1">${c.label}</div>
+    <div class="text-2xl font-black ${c.color}">${c.val}</div>
+    <div class="text-xs text-wmt-gray100 mt-1">${c.sub}</div>
+  </div>`).join('');
+}
+
+function _renderEpaStatusChart(certs) {
+  const counts = {valid:0, expiring:0, expired:0, 'no-date':0};
+  certs.forEach(c=>{ counts[c.certStatus]=(counts[c.certStatus]||0)+1; });
+  const ctx=document.getElementById('chart-epa-status')?.getContext('2d');
+  if(!ctx) return;
+  if(_epaStatusChart) _epaStatusChart.destroy();
+  _epaStatusChart=new Chart(ctx,{
+    type:'doughnut',
+    data:{
+      labels:['Valid','Expiring Soon','Expired','No Date'],
+      datasets:[{data:[counts.valid,counts.expiring,counts.expired,counts['no-date']],
+        backgroundColor:['#2a8703','#ffc220','#ea1100','#c2c2c2'],
+        borderWidth:2,borderColor:'#fff'}]
+    },
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{font:{size:10}}}}}
+  });
+}
+
+function _renderEpaTypesChart(certs) {
+  const typeCounts={};
+  certs.forEach(c=>{const t=c.license_type||'Unknown'; typeCounts[t]=(typeCounts[t]||0)+1;});
+  const sorted=Object.entries(typeCounts).sort((a,b)=>b[1]-a[1]);
+  const ctx=document.getElementById('chart-epa-types')?.getContext('2d');
+  if(!ctx) return;
+  if(_epaTypesChart) _epaTypesChart.destroy();
+  _epaTypesChart=new Chart(ctx,{
+    type:'bar',
+    data:{labels:sorted.map(([k])=>k),datasets:[{
+      label:'Count',data:sorted.map(([,v])=>v),
+      backgroundColor:'#0053e2',borderRadius:4
+    }]},
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false}},
+      scales:{
+        y:{ticks:{font:{size:10}},grid:{color:'#f0f0f0'}},
+        x:{ticks:{font:{size:9},maxRotation:30}}
+      }
+    }
+  });
+}
+
+function _renderEpaExpiring(expiring) {
+  const el=document.getElementById('epa-expiring-list');
+  if(!el) return;
+  if(!expiring.length){el.innerHTML='<span class="text-green-700 font-semibold">✓ No certs expiring within 90 days!</span>';return;}
+  el.innerHTML=expiring.slice(0,20).map(c=>
+    `<div class="flex justify-between border-b border-amber-100 py-1">
+      <span class="font-medium">${c.full_name||'—'}</span>
+      <span class="text-wmt-gray100">${c.license_type||'—'} &middot; ${c.license_number||'—'}</span>
+      <span class="font-semibold text-yellow-700">Expires: ${c.expiry_date||'—'}</span>
+    </div>`).join('');
+}
+
+function _renderEpaTable(certs) {
+  const tbody=document.getElementById('epa-table-body');
+  if(!tbody) return;
+  tbody.innerHTML=certs.slice(0,300).map((c,i)=>{
+    const pill = c.certStatus==='valid'
+      ? `<span class="score-low rounded px-2 py-0.5 font-bold">✓ Valid</span>`
+      : c.certStatus==='expiring'
+      ? `<span class="score-med rounded px-2 py-0.5 font-bold">⚠ Expiring</span>`
+      : c.certStatus==='expired'
+      ? `<span class="score-high rounded px-2 py-0.5 font-bold">❌ Expired</span>`
+      : `<span class="score-none rounded px-2 py-0.5">No Date</span>`;
+    return `<tr class="hover:bg-wmt-gray10 ${i%2===0?'':'bg-gray-50/50'}">
+      <td class="px-3 py-2 font-medium">${c.full_name||'—'}</td>
+      <td class="px-3 py-2 text-wmt-gray100">${c.org_role||'—'}</td>
+      <td class="px-3 py-2">${c.user_status||'—'}</td>
+      <td class="px-3 py-2">${c.license_category||'—'}</td>
+      <td class="px-3 py-2">${c.license_type||'—'}</td>
+      <td class="px-3 py-2 font-mono text-wmt-gray100">${c.license_number||'—'}</td>
+      <td class="px-3 py-2 text-right">${c.issue_date||'—'}</td>
+      <td class="px-3 py-2 text-right ${c.certStatus==='expired'?'text-wmt-red font-semibold':c.certStatus==='expiring'?'text-yellow-600 font-semibold':''}">${c.expiry_date||'—'}</td>
+      <td class="px-3 py-2 text-right">${c.license_verified||'—'}</td>
+      <td class="px-3 py-2 text-right">${pill}</td>
+    </tr>`;
+  }).join('');
+}
+
+function exportEpaTable() {
+  const hdr='Name,Role,User Status,License Category,License Type,License #,Issue Date,Expiry Date,Verified,Cert Status\n';
+  const csv=hdr+(EPA_CERTS||[]).map(c=>[
+    c.full_name,c.org_role,c.user_status,c.license_category,c.license_type,
+    c.license_number,c.issue_date,c.expiry_date,c.license_verified,''
+  ].join(',')).join('\n');
+  const a=document.createElement('a');
+  a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv);
+  a.download='hvacr_epa_certs.csv';
+  a.click();
+}
+</script>

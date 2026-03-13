@@ -1,0 +1,155 @@
+<!-- ====== TOP GUN JS ====== -->
+<script>
+let _tgWoChart=null, _tgTntChart=null, _tgCodesChart=null;
+
+function render_topgun() {
+  const data = (TOP_GUN||[]);
+  _renderTgKpis(data);
+  _renderTgWoChart(data);
+  _renderTgTntChart(data);
+  _renderTgCodesChart(data);
+  _renderTgTable(data);
+}
+
+function _renderTgKpis(data) {
+  const total     = data.length;
+  const completed = data.filter(d=>(d.Status||'').toLowerCase().includes('complet')).length;
+  const avgWoRed  = _avg(data.map(d=>parseFloat(d.pct_reduction_wo||0)).filter(v=>!isNaN(v)));
+  const avgTntDiff= _avg(data.map(d=>parseFloat(d.pct_diff_tnt||0)).filter(v=>!isNaN(v)));
+  document.getElementById('tg-kpis').innerHTML = [
+    {label:'Total Engagements', val:fmt(total),     sub:'all Top Gun calls',        color:'text-wmt-blue'},
+    {label:'Completed',         val:fmt(completed), sub:`${total-completed} in progress`, color:'text-wmt-blue'},
+    {label:'Avg WO Reduction',  val:avgWoRed!=null?pct(avgWoRed):'—', sub:'after intervention', color:'text-green-700'},
+    {label:'Avg TnT Improvement',val:avgTntDiff!=null?pct(avgTntDiff):'—', sub:'after intervention', color:'text-green-700'},
+  ].map(c=>`<div class="kpi-card bg-white rounded-xl shadow p-4">
+    <div class="text-xs text-wmt-gray100 mb-1">${c.label}</div>
+    <div class="text-2xl font-black ${c.color}">${c.val}</div>
+    <div class="text-xs text-wmt-gray100 mt-1">${c.sub}</div>
+  </div>`).join('');
+}
+
+function _avg(arr) {
+  return arr.length ? arr.reduce((a,b)=>a+b)/arr.length : null;
+}
+
+function _renderTgWoChart(data) {
+  // Show before/after per store (top 20 by WO before)
+  const sorted=[...data].filter(d=>d.Before_Workorders!=null)
+    .sort((a,b)=>parseFloat(b.Before_Workorders||0)-parseFloat(a.Before_Workorders||0))
+    .slice(0,20);
+  const labels=sorted.map(d=>String(d.Store_nbr||'—'));
+  const before=sorted.map(d=>parseFloat(d.Before_Workorders||0));
+  const after =sorted.map(d=>parseFloat(d.After_Workorders||0));
+  const ctx=document.getElementById('chart-tg-wo')?.getContext('2d');
+  if(!ctx) return;
+  if(_tgWoChart) _tgWoChart.destroy();
+  _tgWoChart=new Chart(ctx,{
+    type:'bar',
+    data:{labels,datasets:[
+      {label:'Before',data:before,backgroundColor:'rgba(234,17,0,.6)',borderRadius:3},
+      {label:'After', data:after, backgroundColor:'rgba(42,135,3,.6)', borderRadius:3},
+    ]},
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{position:'top',labels:{font:{size:10}}}},
+      scales:{
+        y:{ticks:{font:{size:10}},grid:{color:'#f0f0f0'}},
+        x:{ticks:{font:{size:9}}}
+      }
+    }
+  });
+}
+
+function _renderTgTntChart(data) {
+  const sorted=[...data].filter(d=>d.Time_in_Target_Before!=null)
+    .sort((a,b)=>parseFloat(a.Time_in_Target_Before||0)-parseFloat(b.Time_in_Target_Before||0))
+    .slice(0,20);
+  const labels=sorted.map(d=>String(d.Store_nbr||'—'));
+  const before=sorted.map(d=>+(parseFloat(d.Time_in_Target_Before||0)*100).toFixed(1));
+  const after =sorted.map(d=>+(parseFloat(d.Time_in_Target_After||0)*100).toFixed(1));
+  const ctx=document.getElementById('chart-tg-tnt')?.getContext('2d');
+  if(!ctx) return;
+  if(_tgTntChart) _tgTntChart.destroy();
+  _tgTntChart=new Chart(ctx,{
+    type:'bar',
+    data:{labels,datasets:[
+      {label:'Before',data:before,backgroundColor:'rgba(234,17,0,.6)',borderRadius:3},
+      {label:'After', data:after, backgroundColor:'rgba(42,135,3,.6)', borderRadius:3},
+    ]},
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{position:'top',labels:{font:{size:10}}}},
+      scales:{
+        y:{min:0,max:100,ticks:{callback:v=>v+'%',font:{size:10}},grid:{color:'#f0f0f0'}},
+        x:{ticks:{font:{size:9}}}
+      }
+    }
+  });
+}
+
+function _renderTgCodesChart(data) {
+  const codeCounts={};
+  data.forEach(d=>{
+    const c=(d.Problem_code_desc||'Unknown').trim();
+    codeCounts[c]=(codeCounts[c]||0)+1;
+  });
+  const sorted=Object.entries(codeCounts).sort((a,b)=>b[1]-a[1]).slice(0,15);
+  const ctx=document.getElementById('chart-tg-codes')?.getContext('2d');
+  if(!ctx) return;
+  if(_tgCodesChart) _tgCodesChart.destroy();
+  _tgCodesChart=new Chart(ctx,{
+    type:'bar',
+    data:{labels:sorted.map(([k])=>k.length>35?k.slice(0,35)+'…':k),
+      datasets:[{label:'Engagements',data:sorted.map(([,v])=>v),backgroundColor:'#ffc220',borderRadius:4}]},
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false}},
+      scales:{
+        y:{ticks:{font:{size:10}},grid:{color:'#f0f0f0'}},
+        x:{ticks:{font:{size:8},maxRotation:40}}
+      }
+    }
+  });
+}
+
+function _renderTgTable(data) {
+  const sorted=[...data].sort((a,b)=>(b.Call_Date||'').localeCompare(a.Call_Date||''));
+  const tbody=document.getElementById('tg-table-body');
+  if(!tbody) return;
+  tbody.innerHTML=sorted.map((d,i)=>{
+    const woRed=parseFloat(d.pct_reduction_wo||0);
+    const tntDiff=parseFloat(d.pct_diff_tnt||0);
+    return `<tr class="hover:bg-wmt-gray10 ${i%2===0?'':'bg-gray-50/50'}">
+      <td class="px-3 py-2 font-mono font-semibold">${d.Store_nbr||'—'}</td>
+      <td class="px-3 py-2">${d.FM_Sr_Director||'—'}</td>
+      <td class="px-3 py-2">${d.FM_Director||'—'}</td>
+      <td class="px-3 py-2">${d.FM_Regional_Mgr||'—'}</td>
+      <td class="px-3 py-2 max-w-[140px] truncate" title="${d.Problem_code_desc||''}">${(d.Problem_code_desc||'—').slice(0,40)}</td>
+      <td class="px-3 py-2 text-right whitespace-nowrap">${d.Call_Date||'—'}</td>
+      <td class="px-3 py-2 text-right">${d.Project_duration_in_days||'—'}</td>
+      <td class="px-3 py-2 text-right">${fmt(d.Before_Workorders)}</td>
+      <td class="px-3 py-2 text-right">${fmt(d.After_Workorders)}</td>
+      <td class="px-3 py-2 text-right font-semibold ${woRed>0?'text-green-700':woRed<0?'text-wmt-red':''}">${d.pct_reduction_wo!=null?pct(woRed):'—'}</td>
+      <td class="px-3 py-2 text-right">${d.Time_in_Target_Before!=null?pct(parseFloat(d.Time_in_Target_Before)*100):'—'}</td>
+      <td class="px-3 py-2 text-right">${d.Time_in_Target_After!=null?pct(parseFloat(d.Time_in_Target_After)*100):'—'}</td>
+      <td class="px-3 py-2 text-right font-semibold ${tntDiff>0?'text-green-700':tntDiff<0?'text-wmt-red':''}">${d.pct_diff_tnt!=null?pct(tntDiff):'—'}</td>
+      <td class="px-3 py-2 text-right">${d.Status||'—'}</td>
+    </tr>`;
+  }).join('');
+}
+
+function exportTopGunTable() {
+  const hdr='Store,Sr Director,Director,RM,Problem Code,Call Date,Duration,WOs Before,WOs After,WO Reduction %,TnT Before,TnT After,TnT Diff %,Status\n';
+  const csv=hdr+(TOP_GUN||[]).map(d=>[
+    d.Store_nbr,d.FM_Sr_Director,d.FM_Director,d.FM_Regional_Mgr,
+    (d.Problem_code_desc||'').replace(/,/g,';'),d.Call_Date,
+    d.Project_duration_in_days,d.Before_Workorders,d.After_Workorders,
+    d.pct_reduction_wo,d.Time_in_Target_Before,d.Time_in_Target_After,
+    d.pct_diff_tnt,d.Status
+  ].join(',')).join('\n');
+  const a=document.createElement('a');
+  a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv);
+  a.download='hvacr_topgun_engagements.csv';
+  a.click();
+}
+</script>

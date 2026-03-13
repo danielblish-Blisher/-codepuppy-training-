@@ -1,0 +1,113 @@
+<!-- ====== OVERVIEW TAB ====== -->
+<div id="tab-overview" class="tab-panel active">
+  <div class="max-w-screen-2xl mx-auto px-4 py-5 space-y-6">
+
+    <!-- KPI Cards -->
+    <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4" id="overview-kpis"></div>
+
+    <!-- Insight Banner -->
+    <div id="overview-insight"
+         class="bg-blue-50 border border-blue-200 rounded-xl p-4 text-sm text-wmt-gray160">
+    </div>
+
+    <!-- Row: Training Gap by Sr Director + Exam Pass Trend -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+      <!-- Training gap bar chart -->
+      <div class="bg-white rounded-xl shadow p-4">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="font-semibold text-sm text-wmt-gray160">Training Need Score by Sr Director</h2>
+          <span class="text-xs text-wmt-gray100">Higher = more training needed</span>
+        </div>
+        <div style="height:280px;">
+          <canvas id="chart-sr-gap"></canvas>
+        </div>
+      </div>
+
+      <!-- Exam pass rate trend -->
+      <div class="bg-white rounded-xl shadow p-4">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="font-semibold text-sm text-wmt-gray160">Exam Pass Rate Trend (Rolling 12 Weeks)</h2>
+          <span class="text-xs text-wmt-gray100">By fiscal week</span>
+        </div>
+        <div style="height:280px;">
+          <canvas id="chart-exam-trend"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- Row: Bottom stores table + Training gap donut -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+      <!-- Bottom stores table (most training needed) -->
+      <div class="lg:col-span-2 bg-white rounded-xl shadow overflow-hidden">
+        <div class="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+          <h2 class="font-semibold text-sm">Stores Needing Most Training Attention</h2>
+          <div class="flex gap-2">
+            <select id="ov-sr-filter" onchange="render_overview()"
+                    class="text-xs border rounded px-2 py-1 text-wmt-gray160">
+              <option value="">All Sr Directors</option>
+            </select>
+            <button onclick="exportOverviewTable()"
+                    class="text-xs bg-wmt-blue text-white rounded px-2 py-1">↓ CSV</button>
+          </div>
+        </div>
+        <div class="overflow-auto max-h-72">
+          <table class="w-full text-xs sticky-head">
+            <thead class="bg-wmt-gray10 text-wmt-gray100 font-semibold">
+              <tr>
+                <th class="px-3 py-2 text-left">#</th>
+                <th class="px-3 py-2 text-left">Store</th>
+                <th class="px-3 py-2 text-left">Sr Director</th>
+                <th class="px-3 py-2 text-left">Director</th>
+                <th class="px-3 py-2 text-left">RM</th>
+                <th class="px-3 py-2 text-right">Gap Score</th>
+                <th class="px-3 py-2 text-right">FCR %</th>
+                <th class="px-3 py-2 text-right">SLA %</th>
+                <th class="px-3 py-2 text-right">Repeat %</th>
+                <th class="px-3 py-2 text-right">WOs</th>
+              </tr>
+            </thead>
+            <tbody id="overview-table-body" class="divide-y divide-gray-100"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Score distribution donut -->
+      <div class="bg-white rounded-xl shadow p-4">
+        <h2 class="font-semibold text-sm mb-3">Gap Score Distribution</h2>
+        <div style="height:200px;">
+          <canvas id="chart-score-dist"></canvas>
+        </div>
+        <div id="score-dist-legend" class="mt-3 space-y-1 text-xs"></div>
+      </div>
+    </div>
+
+    <!-- Director-level rollup table -->
+    <div class="bg-white rounded-xl shadow overflow-hidden">
+      <div class="px-4 py-3 border-b border-gray-100">
+        <h2 class="font-semibold text-sm">Director-Level Training Rollup</h2>
+      </div>
+      <div class="overflow-auto">
+        <table class="w-full text-xs sticky-head">
+          <thead class="bg-wmt-gray10 text-wmt-gray100 font-semibold">
+            <tr>
+              <th class="px-3 py-2 text-left">Sr Director</th>
+              <th class="px-3 py-2 text-left">Director</th>
+              <th class="px-3 py-2 text-right">Stores</th>
+              <th class="px-3 py-2 text-right">Gap Score</th>
+              <th class="px-3 py-2 text-right">FCR %</th>
+              <th class="px-3 py-2 text-right">SLA %</th>
+              <th class="px-3 py-2 text-right">Repeat %</th>
+              <th class="px-3 py-2 text-right">EPA Compliant</th>
+              <th class="px-3 py-2 text-right">Exam Pass %</th>
+              <th class="px-3 py-2 text-right">WOs (18mo)</th>
+            </tr>
+          </thead>
+          <tbody id="director-table-body" class="divide-y divide-gray-100"></tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+</div>
