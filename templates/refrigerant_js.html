@@ -1,0 +1,203 @@
+<!-- ====== REFRIGERANT JS ====== -->
+<!-- Uses: REFRIG_STATS, REFRIG_BY_TYPE, REFRIG_BY_REASON, REFRIG_TREND, REFRIG_BY_SR, REFRIG_RECENT -->
+<script>
+let _rChartType=null, _rChartReason=null, _rChartTrend=null, _rChartSr=null;
+
+function render_refrigerant() {
+  _renderRefrigKpis();
+  _renderRefrigInsight();
+  _renderTypeChart();
+  _renderReasonChart();
+  _renderTrendChart();
+  _renderSrChart();
+  _renderRefrigTable();
+}
+
+function _renderRefrigKpis() {
+  const s = REFRIG_STATS || {};
+  const cards = [
+    { label:'Total Events',       val: fmt(s.total_events||0), sub:'refrigerant records',    color:'text-wmt-blue' },
+    { label:'Total Pounds Used',  val: fmt(s.total_lbs||0,0),  sub:'all refrigerant types',  color:'text-wmt-blue' },
+    { label:'Stores Impacted',    val: fmt(s.stores||0),        sub:'unique locations',        color:'text-wmt-blue' },
+    { label:'Refrigerant Types',  val: fmt(s.types||0),         sub:'distinct refrigerants',   color:'text-wmt-blue' },
+  ];
+  document.getElementById('refrig-kpis').innerHTML = cards.map(c=>`
+    <div class="kpi-card bg-white rounded-xl shadow p-4">
+      <div class="text-xs text-wmt-gray100 font-medium mb-1">${c.label}</div>
+      <div class="text-2xl font-black ${c.color}">${c.val}</div>
+      <div class="text-xs text-wmt-gray100 mt-1">${c.sub}</div>
+    </div>`).join('');
+}
+
+function _renderRefrigInsight() {
+  const s     = REFRIG_STATS || {};
+  const top   = (REFRIG_BY_TYPE||[])[0];
+  const topR  = (REFRIG_BY_REASON||[])[0];
+  const topSr = (REFRIG_BY_SR||[])[0];
+  document.getElementById('refrig-insight').innerHTML = `
+    <strong>💡 Refrigerant Activity Summary:</strong>
+    Over the last 12 months, <strong>${fmt(s.total_events||0)}</strong> refrigerant events
+    totaling <strong>${fmt(s.total_lbs||0,0)} lbs</strong> were recorded across
+    <strong>${fmt(s.stores||0)}</strong> stores using
+    <strong>${fmt(s.types||0)}</strong> distinct refrigerant types.
+    ${top ? `<strong>${top.type}</strong> is the most-used refrigerant
+    (<strong>${fmt(top.lbs,0)} lbs</strong> in ${fmt(top.events)} events).` : ''}
+    ${topR ? `Most common reason: <strong>${topR.reason}</strong> (${fmt(topR.events)} events).` : ''}
+    ${topSr ? `Sr Director <strong>${topSr.sr}</strong> has the highest usage
+    (<strong>${fmt(topSr.lbs,0)} lbs</strong>).` : ''}`;
+}
+
+function _renderTypeChart() {
+  const data = (REFRIG_BY_TYPE||[]).slice(0,15);
+  const ctx  = document.getElementById('chart-refrig-type')?.getContext('2d');
+  if (!ctx) return;
+  if (_rChartType) _rChartType.destroy();
+  const colors = [
+    '#0053e2','#ffc220','#2a8703','#ea1100','#00b0c8',
+    '#7c3aed','#db2777','#d97706','#059669','#64748b',
+    '#3b82f6','#f59e0b','#10b981','#ef4444','#8b5cf6',
+  ];
+  _rChartType = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: data.map(d => d.type.length>28 ? d.type.slice(0,28)+'\u2026' : d.type),
+      datasets: [{ label:'Lbs Used', data: data.map(d=>d.lbs),
+        backgroundColor: data.map((_,i)=>colors[i%colors.length]), borderRadius:4 }]
+    },
+    options: {
+      responsive:true, maintainAspectRatio:false, indexAxis:'y',
+      plugins:{ legend:{display:false},
+        tooltip:{ callbacks:{ label: ctx => ` ${fmt(ctx.raw,1)} lbs (${fmt(data[ctx.dataIndex].events)} events)` }}},
+      scales:{
+        x:{ ticks:{font:{size:10}}, grid:{color:'#f0f0f0'} },
+        y:{ ticks:{font:{size:9}} }
+      }
+    }
+  });
+}
+
+function _renderReasonChart() {
+  const data = (REFRIG_BY_REASON||[]).slice(0,10);
+  const ctx  = document.getElementById('chart-refrig-reason')?.getContext('2d');
+  if (!ctx) return;
+  if (_rChartReason) _rChartReason.destroy();
+  const REASON_COLORS = {
+    'Leak Repaired':    '#ea1100',
+    'Repair Attempted': '#ffc220',
+    'Removal':          '#919191',
+    'Retrofit':         '#2a8703',
+    'Initial Charge':   '#0053e2',
+    'Adjustment':       '#00b0c8',
+    'Removed Reused':   '#7c3aed',
+    'Leak':             '#db2777',
+    'Repair':           '#d97706',
+    'System Expansion': '#059669',
+  };
+  _rChartReason = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: data.map(d => d.reason),
+      datasets: [{ label:'Events', data: data.map(d=>d.events),
+        backgroundColor: data.map(d=>REASON_COLORS[d.reason]||'#c2c2c2'), borderRadius:4 }]
+    },
+    options: {
+      responsive:true, maintainAspectRatio:false, indexAxis:'y',
+      plugins:{ legend:{display:false},
+        tooltip:{ callbacks:{ label: ctx => ` ${fmt(ctx.raw)} events (${fmt(data[ctx.dataIndex].lbs,1)} lbs)` }}},
+      scales:{
+        x:{ ticks:{font:{size:10}}, grid:{color:'#f0f0f0'} },
+        y:{ ticks:{font:{size:9}} }
+      }
+    }
+  });
+}
+
+function _renderTrendChart() {
+  const trend  = REFRIG_TREND || [];
+  const labels = trend.map(t => t.month);
+  const lbs    = trend.map(t => t.lbs);
+  const events = trend.map(t => t.events);
+  const ctx = document.getElementById('chart-refrig-trend')?.getContext('2d');
+  if (!ctx) return;
+  if (_rChartTrend) _rChartTrend.destroy();
+  _rChartTrend = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        { label:'Lbs Used',  data:lbs,    backgroundColor:'#0053e2', borderRadius:3, yAxisID:'y' },
+        { label:'Events',    data:events,  type:'line',
+          borderColor:'#ffc220', backgroundColor:'rgba(255,194,32,.15)',
+          tension:0.3, fill:true, pointRadius:3, yAxisID:'y1' },
+      ]
+    },
+    options: {
+      responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{ position:'top', labels:{font:{size:10}} } },
+      scales:{
+        y:  { position:'left',  ticks:{font:{size:9}},  grid:{color:'#f0f0f0'}, title:{display:true,text:'Lbs',font:{size:9}} },
+        y1: { position:'right', ticks:{font:{size:9}},  grid:{drawOnChartArea:false}, title:{display:true,text:'Events',font:{size:9}} },
+        x:  { ticks:{font:{size:8}, maxRotation:45} }
+      }
+    }
+  });
+}
+
+function _renderSrChart() {
+  const data = (REFRIG_BY_SR||[]).slice(0,15);
+  const ctx  = document.getElementById('chart-refrig-sr')?.getContext('2d');
+  if (!ctx) return;
+  if (_rChartSr) _rChartSr.destroy();
+  _rChartSr = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: data.map(d => d.sr.length>24 ? d.sr.slice(0,24)+'\u2026' : d.sr),
+      datasets: [{ label:'Lbs Used', data: data.map(d=>d.lbs),
+        backgroundColor:'#0053e2', borderRadius:3 }]
+    },
+    options: {
+      responsive:true, maintainAspectRatio:false, indexAxis:'y',
+      plugins:{ legend:{display:false},
+        tooltip:{ callbacks:{ label: ctx => ` ${fmt(ctx.raw,1)} lbs (${fmt(data[ctx.dataIndex].events)} events)` }}},
+      scales:{
+        x:{ ticks:{font:{size:9}}, grid:{color:'#f0f0f0'} },
+        y:{ ticks:{font:{size:8}} }
+      }
+    }
+  });
+}
+
+function _renderRefrigTable() {
+  const tbody = document.getElementById('refrig-table-body');
+  if (!tbody) return;
+  const rows = REFRIG_RECENT || [];
+  tbody.innerHTML = rows.map((r,i) => {
+    const isOds = r.is_ods === 'True' || r.is_ods === 'true' || r.is_ods === '1';
+    return `<tr class="hover:bg-wmt-gray10 text-xs ${i%2===0?'':'bg-gray-50/50'}">
+      <td class="px-3 py-2 whitespace-nowrap">${r.use_date||'—'}</td>
+      <td class="px-3 py-2 font-mono">${r.store_nbr||'—'}</td>
+      <td class="px-3 py-2">${r.fm_sr_director||'—'}</td>
+      <td class="px-3 py-2 text-wmt-gray100">${r.trade_name||'—'}</td>
+      <td class="px-3 py-2 font-medium">${r.refrigerant_type_name||'—'}</td>
+      <td class="px-3 py-2 text-right font-mono">${r.lbs_used?fmt(parseFloat(r.lbs_used),1):'—'}</td>
+      <td class="px-3 py-2">${r.refrigerant_reason||'—'}</td>
+      <td class="px-3 py-2 text-center">${isOds
+        ? '<span class="score-high rounded px-1.5 py-0.5 font-bold text-xs">ODS</span>'
+        : '<span class="text-wmt-gray100">—</span>'}</td>
+      <td class="px-3 py-2 font-mono text-wmt-gray100">${r.tracking_nbr||'—'}</td>
+    </tr>`;
+  }).join('');
+}
+
+function exportRefrigTable() {
+  const hdr = 'Date,Store,Sr Director,Trade,Refrigerant Type,Lbs Used,Reason,ODS,WO #\n';
+  const csv = hdr + (REFRIG_RECENT||[]).map(r => [
+    r.use_date, r.store_nbr, r.fm_sr_director, r.trade_name,
+    r.refrigerant_type_name, r.lbs_used, r.refrigerant_reason, r.is_ods, r.tracking_nbr
+  ].join(',')).join('\n');
+  const a = document.createElement('a');
+  a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+  a.download = 'refrigerant_activity.csv';
+  a.click();
+}
+</script>

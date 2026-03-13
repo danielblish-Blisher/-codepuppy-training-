@@ -243,6 +243,30 @@ run_query("top_gun", """
 """)
 
 
+run_query("refrigerant_materials", """
+    SELECT
+        m.sc_rec_id                          AS tracking_nbr,
+        m.refrigerant_type_name,
+        CAST(m.qty AS FLOAT64)               AS lbs_used,
+        m.refrigerant_reason,
+        CAST(m.use_date AS DATE)             AS use_date,
+        CAST(m.is_ods AS STRING)             AS is_ods,
+        wo.store_nbr,
+        wo.store_type_name,
+        wo.fm_sr_director,
+        wo.fm_director,
+        wo.fm_regional_mgr,
+        wo.trade_name
+    FROM `re-ods-prod.us_re_ods_prod_pub.sc_walmart_materials` m
+    INNER JOIN `re-ods-explorer.us_re_fm_prod.fsai_workorders` wo
+        ON SAFE_CAST(m.sc_rec_id AS INT64) = SAFE_CAST(wo.tracking_nbr AS INT64)
+    WHERE m.refrigerant_type_name IS NOT NULL
+      AND CAST(m.qty AS FLOAT64) > 0
+      AND m.use_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 12 MONTH)
+    ORDER BY m.use_date DESC
+""", max_rows=300_000)
+
+
 run_query("pm_compliance", """
     SELECT *
     FROM `re-ods-explorer.us_re_fm_prod.fsai_CMMS_PM_Compliance`

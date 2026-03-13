@@ -275,6 +275,78 @@ compact_obs_rows = [
 ]
 
 
+# ── Refrigerant materials (pre-aggregate from sc_walmart_materials JOIN) ────
+
+refrig_raw = load("refrigerant_materials", default=[])
+
+_refrig_type:   dict = {}   # type_name -> {events, lbs}
+_refrig_reason: dict = {}   # reason    -> {events, lbs}
+_refrig_month:  dict = {}   # YYYY-MM   -> {events, lbs}
+_refrig_sr:     dict = {}   # sr_dir    -> {events, lbs}
+_refrig_stores: set  = set()
+
+for r in refrig_raw:
+    rtype  = (r.get("refrigerant_type_name") or "Unknown").strip()
+    reason = (r.get("refrigerant_reason")    or "Unknown").strip() or "Unknown"
+    sr     = (r.get("fm_sr_director")        or "").strip()
+    sn     = str(r.get("store_nbr")          or "").strip()
+    lbs    = float(r.get("lbs_used") or 0)
+    dt     = str(r.get("use_date") or "")[:7]  # YYYY-MM
+
+    if sn:
+        _refrig_stores.add(sn)
+
+    for bucket, key in [(_refrig_type, rtype), (_refrig_reason, reason),
+                         (_refrig_month, dt),   (_refrig_sr, sr)]:
+        if not key:
+            continue
+        if key not in bucket:
+            bucket[key] = {"events": 0, "lbs": 0.0}
+        bucket[key]["events"] += 1
+        bucket[key]["lbs"]    += lbs
+
+refrig_stats = {
+    "total_events": len(refrig_raw),
+    "total_lbs":    round(sum(float(r.get("lbs_used") or 0) for r in refrig_raw), 1),
+    "stores":       len(_refrig_stores),
+    "types":        len(_refrig_type),
+}
+
+refrig_by_type = sorted(
+    [{"type": k, "events": v["events"], "lbs": round(v["lbs"], 1)}
+     for k, v in _refrig_type.items()],
+    key=lambda x: x["lbs"], reverse=True
+)
+
+refrig_by_reason = sorted(
+    [{"reason": k, "events": v["events"], "lbs": round(v["lbs"], 1)}
+     for k, v in _refrig_reason.items()],
+    key=lambda x: x["events"], reverse=True
+)
+
+refrig_trend = [
+    {"month": k, "events": v["events"], "lbs": round(v["lbs"], 1)}
+    for k, v in sorted(_refrig_month.items())
+]
+
+refrig_by_sr = sorted(
+    [{"sr": k, "events": v["events"], "lbs": round(v["lbs"], 1)}
+     for k, v in _refrig_sr.items() if k],
+    key=lambda x: x["lbs"], reverse=True
+)[:25]
+
+# 500 most-recent rows for the detail table
+_REFRIG_COLS = (
+    "tracking_nbr", "refrigerant_type_name", "lbs_used",
+    "refrigerant_reason", "use_date", "is_ods",
+    "store_nbr", "fm_sr_director", "fm_director", "trade_name",
+)
+refrig_recent = [
+    {k: str(r.get(k) or "")[:80] for k in _REFRIG_COLS}
+    for r in refrig_raw[:500]
+]
+
+
 # ── EPA certs (pass-through, already clean) ─────────────────────────
 
 compact_epa = epa_certs
@@ -310,7 +382,8 @@ print(f"  Total WOs:     {len(training_wo):,} (raw, not embedded)")
 print(f"  Exam records:  {len(compact_exam):,}")
 print(f"  Technicians:   {len(compact_tech):,}")
 print(f"  Tech-stores:   {len(compact_tech_stores):,} (compact pairs)")
-print(f"  Observations:  {obs_stats['total']:,} → {len(compact_obs_rows)} table rows")
+print(f"  Observations:  {obs_stats['total']:,} \u2192 {len(compact_obs_rows)} table rows")
+print(f"  Refrigerant:   {refrig_stats['total_events']:,} events, {refrig_stats['total_lbs']:,.0f} lbs")
 print(f"  EPA certs:     {len(compact_epa):,}")
 print(f"  Top Gun:       {len(compact_tg):,}")
 
@@ -335,6 +408,13 @@ data_block += js_var("OBS_TREND",        obs_trend)
 data_block += js_var("OBS_SR_LIST",      sorted(obs_sr_set))
 data_block += js_var("OBS_GROUP_LIST",   sorted(obs_group_set))
 data_block += js_var("OBS_ROWS",         compact_obs_rows)
+# Refrigerant materials
+data_block += js_var("REFRIG_STATS",      refrig_stats)
+data_block += js_var("REFRIG_BY_TYPE",    refrig_by_type)
+data_block += js_var("REFRIG_BY_REASON",  refrig_by_reason)
+data_block += js_var("REFRIG_TREND",      refrig_trend)
+data_block += js_var("REFRIG_BY_SR",      refrig_by_sr)
+data_block += js_var("REFRIG_RECENT",     refrig_recent)
 # EPA + Top Gun
 data_block += js_var("EPA_CERTS",        compact_epa)
 data_block += js_var("TOP_GUN",          compact_tg)
@@ -352,6 +432,7 @@ TEMPLATE_ORDER = [
     "technicians_tab.html",
     "workorders_tab.html",
     "observations_tab.html",
+    "refrigerant_tab.html",
     "epa_tab.html",
     "topgun_tab.html",
     # tab JS
@@ -359,6 +440,7 @@ TEMPLATE_ORDER = [
     "technicians_js.html",
     "workorders_js.html",
     "observations_js.html",
+    "refrigerant_js.html",
     "epa_js.html",
     "topgun_js.html",
     # closing

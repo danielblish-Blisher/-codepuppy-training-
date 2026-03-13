@@ -1,0 +1,88 @@
+<!-- ====== REFRIGERANT TAB ====== -->
+<div id="tab-refrigerant" class="tab-panel">
+  <div class="max-w-screen-2xl mx-auto px-4 py-5 space-y-6">
+
+    <!-- KPI row -->
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 overflow-visible" id="refrig-kpis"></div>
+
+    <!-- Insight banner -->
+    <div id="refrig-insight"
+         class="bg-blue-50 border border-blue-200 rounded-xl p-4 text-sm text-wmt-gray160">
+    </div>
+
+    <!-- Row 1: By Type + By Reason -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+      <div class="bg-white rounded-xl shadow p-4">
+        <h2 class="font-semibold text-sm text-wmt-gray160 mb-1">Pounds Used by Refrigerant Type</h2>
+        <p class="text-xs text-wmt-gray100 mb-3">All refrigerant recorded on work orders · last 12 months</p>
+        <div style="height:320px;">
+          <canvas id="chart-refrig-type"></canvas>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-xl shadow p-4">
+        <h2 class="font-semibold text-sm text-wmt-gray160 mb-1">Events by Reason</h2>
+        <p class="text-xs text-wmt-gray100 mb-3">Why refrigerant was added — leak repair, retrofit, removal, etc.</p>
+        <div style="height:320px;">
+          <canvas id="chart-refrig-reason"></canvas>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Row 2: Monthly Trend + By Sr Director -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+      <div class="bg-white rounded-xl shadow p-4">
+        <h2 class="font-semibold text-sm text-wmt-gray160 mb-1">Monthly Trend</h2>
+        <p class="text-xs text-wmt-gray100 mb-3">Pounds used per month · last 12 months</p>
+        <div style="height:260px;">
+          <canvas id="chart-refrig-trend"></canvas>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-xl shadow p-4">
+        <h2 class="font-semibold text-sm text-wmt-gray160 mb-1">Usage by Sr Director</h2>
+        <p class="text-xs text-wmt-gray100 mb-3">Total pounds by region · top 20</p>
+        <div style="height:260px;">
+          <canvas id="chart-refrig-sr"></canvas>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Detail table -->
+    <div class="bg-white rounded-xl shadow">
+      <div class="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+        <h2 class="font-semibold text-sm text-wmt-gray160">Recent Refrigerant Events</h2>
+        <button onclick="exportRefrigTable()"
+                class="text-xs px-3 py-1 rounded bg-wmt-blue text-white hover:bg-blue-700 transition-colors">
+          Export CSV
+        </button>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-fullxt-xs sticky-head">
+          <thead class="bg-wmt-gray10 text-wmt-gray100 text-left">
+            <tr>
+              <th class="px-3 py-2">Date</th>
+              <th class="px-3 py-2">Store</th>
+              <th class="px-3 py-2">Sr Director</th>
+              <th class="px-3 py-2">Trade</th>
+              <th class="px-3 py-2">Refrigerant Type</th>
+              <th class="px-3 py-2 text-right">Lbs Used</th>
+              <th class="px-3 py-2">Reason</th>
+              <th class="px-3 py-2 text-center">ODS</th>
+              <th class="px-3 py-2">WO #</th>
+            </tr>
+          </thead>
+          <tbody id="refrig-table-body"></tbody>
+        </table>
+      </div>
+      <div class="px-4 py-2 text-xs text-wmt-gray100 border-t border-gray-100">
+        Showing most recent 500 events. Export for full dataset.
+      </div>
+    </div>
+
+  </div>
+</div>
