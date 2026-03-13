@@ -95,6 +95,22 @@
 
 <!-- Global state -->
 <script>
+  // ── Visible error trap (remove before final publish) ──────────────────
+  window.addEventListener('error', e => {
+    let box = document.getElementById('_err_box');
+    if (!box) {
+      box = document.createElement('div');
+      box.id = '_err_box';
+      box.style.cssText = 'position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#ea1100;color:#fff;font:12px/1.4 monospace;padding:8px 12px;max-height:35vh;overflow:auto;';
+      document.body.appendChild(box);
+    }
+    box.innerHTML += `<div>❌ ${e.message} @ ${e.filename?.split('/').pop()}:${e.lineno}</div>`;
+  });
+  window.addEventListener('unhandledrejection', e => {
+    let box = document.getElementById('_err_box');
+    if (!box) { box = document.createElement('div'); box.id='_err_box'; box.style.cssText='position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#ea1100;color:#fff;font:12px/1.4 monospace;padding:8px 12px;max-height:35vh;overflow:auto;'; document.body.appendChild(box); }
+    box.innerHTML += `<div>❌ Unhandled: ${e.reason}</div>`;
+  });
   // Banner filter: 'all' | 'walmart' | 'sams'
   let BANNER_FILTER = 'all';
   // Active tab
@@ -108,9 +124,9 @@
     document.querySelectorAll('.tab-panel').forEach(p => {
       p.classList.toggle('active', p.id === 'tab-' + id);
     });
-    // Notify each tab's render function if present
+    // Notify each tab's render function after browser has re-flowed layout
     const fn = window['render_' + id];
-    if (typeof fn === 'function') fn();
+    if (typeof fn === 'function') requestAnimationFrame(fn);
   }
 
   function setBanner(v) {
