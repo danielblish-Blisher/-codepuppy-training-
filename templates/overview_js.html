@@ -285,7 +285,7 @@ function _renderKpis(storeScores) {
     { label:'Active Techs',   val: fmt(techTotal),  sub:'in alignment',     color:'text-wmt-blue' },
     { label:'Avg Gap Score',  val: avgScore!=null?Math.round(avgScore)+'':'—', sub:'0=none · 100=critical',
       color: avgScore>=70?'text-wmt-red':avgScore>=40?'text-yellow-600':'text-green-700' },
-    { label:'First-Call Fix', val: fcrRate!=null?pct(fcrRate*100):'—', sub:'WOs (18mo)',
+    { label:'First-Call Fix', val: fcrRate!=null?pct(fcrRate*100):'—', sub:'WOs (12mo)',
       color: fcrRate!=null&&fcrRate<0.7?'text-wmt-red':'text-green-700' },
     { label:'SLA Compliance', val: slaRate!=null?pct(slaRate*100):'—', sub:'repair on time',
       color: slaRate!=null&&slaRate<0.7?'text-wmt-red':'text-green-700' },
@@ -306,7 +306,7 @@ function _renderInsight(storeScores, orgScores) {
   const totalWos = (STORE_WO_METRICS||[]).reduce((a,m)=>a+m.total_wos, 0);
   document.getElementById('overview-insight').innerHTML = `
     <strong>💡 Training Intelligence Summary:</strong>
-    Analyzing <strong>${fmt(totalWos)}</strong> work orders over the last 18 months across
+    Analyzing <strong>${fmt(totalWos)}</strong> work orders over the last 12 months across
     <strong>${fmt(Object.keys(storeScores).length)}</strong> stores.
     <strong>${fmt(highNeed)}</strong> stores have a High Training Need score (≥70).
     ${topSr ? `Sr Director <strong>${topSr.sr}</strong> has the highest average gap score

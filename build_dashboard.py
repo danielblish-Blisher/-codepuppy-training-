@@ -1,4 +1,4 @@
-"""Build HVACR Training Dashboard.
+"""Build Training Dashboard.
 
 Loads JSON data files, enriches WO records with org hierarchy,
 then stitches templates into docs/dashboard.html.

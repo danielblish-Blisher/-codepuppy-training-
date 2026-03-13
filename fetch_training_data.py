@@ -1,15 +1,15 @@
-"""Fetch HVACR Training Dashboard data from BigQuery via bq CLI.
+"""Fetch Training Dashboard data from BigQuery via bq CLI.
 
 Queries:
   - doc_exam_reg            : exam registrations + pass/fail/scores
   - epa_certs               : EPA 608 cert compliance + expiry
   - tech_alignment          : technician roster, org hierarchy, store assignments
-  - training_workorders     : HVACR WOs with FCR, SLA, trip count, repeat flags
+  - training_workorders     : ALL-trade WOs with FCR, SLA, trip count, repeat flags (12mo)
   - observations            : FSAI field coaching / survey observations
   - top_gun                 : Top-Gun program before/after outcomes
   - pm_compliance           : CMMS preventive maintenance compliance
 
-Billing: re-ods-explorer (same as HVACR dashboard)
+Billing: re-ods-explorer
 """
 import json
 import os
@@ -189,11 +189,7 @@ run_query("training_workorders", """
         wo.fm_regional_mgr,
         wo.store_type_name
     FROM `re-ods-explorer.us_re_fm_prod.fsai_workorders` wo
-    WHERE (
-        wo.trade_name LIKE '%HVAC%'
-        OR wo.trade_name LIKE '%Refrig%'
-    )
-    AND wo.completion_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 18 MONTH)
+    WHERE wo.completion_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 12 MONTH)
     ORDER BY wo.completion_date DESC
 """, max_rows=300_000)
 
