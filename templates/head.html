@@ -63,9 +63,8 @@
     .info-icon:hover { background: #003da8; }
     .info-tip {
       display: none;
-      position: absolute; bottom: calc(100% + 8px); left: 50%;
-      transform: translateX(-50%);
-      width: 260px;
+      position: absolute; top: calc(100% + 8px); left: 0;
+      width: 270px;
       background: #1e293b; color: #f1f5f9;
       font-size: 11px; line-height: 1.55;
       border-radius: 8px; padding: 10px 12px;
@@ -73,13 +72,12 @@
       z-index: 9999; pointer-events: none;
       white-space: normal; text-align: left;
     }
-    /* caret */
+    /* caret — points UP toward the icon */
     .info-tip::after {
       content: '';
-      position: absolute; top: 100%; left: 50%;
-      transform: translateX(-50%);
+      position: absolute; bottom: 100%; left: 14px;
       border: 6px solid transparent;
-      border-top-color: #1e293b;
+      border-bottom-color: #1e293b;
     }
     .info-wrap:hover .info-tip,
     .info-icon:focus + .info-tip { display: block; }
