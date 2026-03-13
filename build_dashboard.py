@@ -110,10 +110,12 @@ for w in training_wo:
         }
     s = store_agg[sn]
     s["total_wos"] += 1
-    if fcr_v == "Y": s["fcr_y"] += 1
-    elif fcr_v == "N": s["fcr_n"] += 1
-    if sla_v == "Y": s["sla_y"] += 1
-    elif sla_v == "N": s["sla_n"] += 1
+    # BQ values: "Yes First Time Fix" / "No First Time Fix" / "Missing Time"
+    if fcr_v.startswith("YES"): s["fcr_y"] += 1
+    elif fcr_v.startswith("NO"):  s["fcr_n"] += 1
+    # BQ values: "Yes" / "No" / ""
+    if sla_v.startswith("YES"): s["sla_y"] += 1
+    elif sla_v.startswith("NO"):  s["sla_n"] += 1
     if trips > 0:
         s["trip_sum"] += trips
         s["trip_n"]   += 1
@@ -124,8 +126,8 @@ for w in training_wo:
         prob_agg[prob] = {"prob": prob, "total": 0, "fcr_y": 0, "fcr_n": 0, "repeat_wos": 0}
     p = prob_agg[prob]
     p["total"] += 1
-    if fcr_v == "Y": p["fcr_y"] += 1
-    elif fcr_v == "N": p["fcr_n"] += 1
+    if fcr_v.startswith("YES"): p["fcr_y"] += 1
+    elif fcr_v.startswith("NO"):  p["fcr_n"] += 1
 
 # Compute per-store repeat WOs & finalise
 for s in store_agg.values():
