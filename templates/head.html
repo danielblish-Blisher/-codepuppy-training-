@@ -118,15 +118,17 @@
 
   function setTab(id) {
     ACTIVE_TAB = id;
+    // Style tab buttons
     document.querySelectorAll('.tab-btn').forEach(b => {
       b.classList.toggle('active', b.dataset.tab === id);
     });
+    // Show/hide panels via inline style (bypasses any CSS specificity wars)
     document.querySelectorAll('.tab-panel').forEach(p => {
-      p.classList.toggle('active', p.id === 'tab-' + id);
+      p.style.display = (p.id === 'tab-' + id) ? 'block' : 'none';
     });
-    // Notify each tab's render function after browser has re-flowed layout
+    // Call render function directly (no rAF delay)
     const fn = window['render_' + id];
-    if (typeof fn === 'function') requestAnimationFrame(fn);
+    if (typeof fn === 'function') fn();
   }
 
   function setBanner(v) {
