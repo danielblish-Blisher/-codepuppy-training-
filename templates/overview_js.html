@@ -12,100 +12,58 @@ let _orgScores   = null;   // cached director-level rollup
 function _computeStoreScores() {
   if (_storeScores) return _storeScores;
 
-  // Build EPA compliance lookup by store (from TECH_STORES + EPA_CERTS)
-  const epaValidIds = new Set();
+  // EPA compliance lookup by store (TECH_STORES + EPA_CERTS)
   const today = new Date();
+  const epaValidIds = new Set();
   (EPA_CERTS || []).forEach(c => {
-    if (!c.expiry_date || c.user_status !== 'Active') return;
-    const exp = new Date(c.expiry_date);
-    if (exp > today) epaValidIds.add(String(c.user_id || '').toLowerCase());
+    if (c.expiry_date && new Date(c.expiry_date) > today)
+      epaValidIds.add(String(c.user_id||'').toLowerCase());
   });
-
-  // Tech EPA compliance by store
-  const storeEpaTotal  = {};
-  const storeEpaValid  = {};
+  const storeEpaTotal = {}, storeEpaValid = {};
   (TECH_STORES || []).forEach(ts => {
     const sn = String(ts.store_nbr || '');
     if (!sn) return;
-    storeEpaTotal[sn] = (storeEpaTotal[sn] || 0) + 1;
-    const uid = String(ts.user_id || '').toLowerCase();
-    if (epaValidIds.has(uid)) storeEpaValid[sn] = (storeEpaValid[sn] || 0) + 1;
+    storeEpaTotal[sn] = (storeEpaTotal[sn]||0) + 1;
+    if (epaValidIds.has(String(ts.user_id||'').toLowerCase()))
+      storeEpaValid[sn] = (storeEpaValid[sn]||0) + 1;
   });
 
-  // WO metrics per store
-  const byStore = {};
-  (TRAINING_WOS || []).forEach(w => {
-    const sn = String(w.store_nbr || '');
-    if (!sn) return;
-    // Banner filter
-    if (BANNER_FILTER === 'walmart' && w.store_type === 'sams') return;
-    if (BANNER_FILTER === 'sams'    && w.store_type !== 'sams') return;
-
-    if (!byStore[sn]) byStore[sn] = {
-      sn, sr: w.sr_director||'', dir: w.director||'', rm: w.rm||'',
-      store_type: w.store_type||'',
-      fcr_total:0, fcr_fail:0,
-      sla_total:0, sla_fail:0,
-      trip_sum:0,  trip_count_n:0,
-      wo_total:0,
-      prob_counts: {},
-    };
-    const s = byStore[sn];
-    s.wo_total++;
-
-    // FCR
-    const fcr = (w.first_time_fix_compliance||'').toUpperCase();
-    if (fcr === 'Y' || fcr === 'N') { s.fcr_total++; if (fcr === 'N') s.fcr_fail++; }
-
-    // SLA
-    const sla = (w.sla_repair_compliance||'').toUpperCase();
-    if (sla === 'Y' || sla === 'N') { s.sla_total++; if (sla === 'N') s.sla_fail++; }
-
-    // Trips
-    const trips = parseFloat(w.trip_count || 0);
-    if (trips > 0) { s.trip_sum += trips; s.trip_count_n++; }
-
-    // Repeat WO tracking by problem code
-    const prob = (w.problem_code_desc || 'Unknown').trim();
-    s.prob_counts[prob] = (s.prob_counts[prob] || 0) + 1;
-  });
-
-  // Compute scores
+  // Use pre-aggregated STORE_WO_METRICS (no 298K row iteration!)
   _storeScores = {};
-  Object.values(byStore).forEach(s => {
-    const fcrRate   = s.fcr_total  > 0 ? s.fcr_fail / s.fcr_total  : null;
-    const slaRate   = s.sla_total  > 0 ? s.sla_fail / s.sla_total  : null;
-    const avgTrips  = s.trip_count_n > 0 ? s.trip_sum / s.trip_count_n : null;
-    // Repeat: % of WOs that are a repeat problem code (count >1 for that store)
-    const repeatProbs = Object.values(s.prob_counts).filter(n => n > 1);
-    const repeatWos  = repeatProbs.reduce((a, n) => a + n, 0);
-    const repeatRate = s.wo_total > 0 ? repeatWos / s.wo_total : null;
-    // EPA
-    const epaTotal = storeEpaTotal[s.sn] || 0;
-    const epaValid = storeEpaValid[s.sn] || 0;
-    const epaMissRate = epaTotal > 0 ? 1 - (epaValid / epaTotal) : null;
-    // Trip excess: scale 0-1 where avg >3 trips = 1.0
-    const tripExcess = avgTrips != null ? Math.min((avgTrips - 1) / 2, 1) : null;
+  (STORE_WO_METRICS || []).forEach(m => {
+    const sn = String(m.store_nbr || '');
+    if (!sn) return;
+    const stLower = (m.store_type||'').toLowerCase();
+    if (BANNER_FILTER==='walmart' && stLower.includes('sam')) return;
+    if (BANNER_FILTER==='sams'    && !stLower.includes('sam')) return;
 
-    // Weighted score (only include components with data)
+    const fcrDen = m.fcr_y + m.fcr_n;
+    const slaDen = m.sla_y + m.sla_n;
+    const fcrFailRate = fcrDen > 0 ? m.fcr_n / fcrDen : null;
+    const slaFailRate = slaDen > 0 ? m.sla_n / slaDen : null;
+    const repeatRate  = m.total_wos > 0 ? m.repeat_wos / m.total_wos : null;
+    const tripExcess  = m.avg_trips != null ? Math.min(Math.max(m.avg_trips-1,0)/2, 1) : null;
+    const epaTotal    = storeEpaTotal[sn] || 0;
+    const epaValid    = storeEpaValid[sn] || 0;
+    const epaMissRate = epaTotal > 0 ? 1 - epaValid/epaTotal : null;
+
     let score = null, totalW = 0;
-    const add = (val, w) => {
-      if (val == null) return;
-      score = (score || 0) + val * w;
-      totalW += w;
-    };
-    add(fcrRate,   0.40);
-    add(slaRate,   0.20);
-    add(repeatRate,0.20);
-    add(tripExcess,0.10);
-    add(epaMissRate,0.10);
-    if (totalW > 0) score = (score / totalW) * 100;
+    const add = (val, w) => { if (val==null) return; score=(score||0)+val*w; totalW+=w; };
+    add(fcrFailRate,  0.40);
+    add(slaFailRate,  0.20);
+    add(repeatRate,   0.20);
+    add(tripExcess,   0.10);
+    add(epaMissRate,  0.10);
+    if (totalW > 0) score = (score/totalW)*100;
 
-    _storeScores[s.sn] = {
-      ...s,
-      fcrRate, slaRate, repeatRate, avgTrips, epaMissRate,
-      score,
-      epaTotal, epaValid,
+    _storeScores[sn] = {
+      sn, sr: m.sr_director||'', dir: m.director||'', rm: m.rm||'',
+      store_type: m.store_type||'',
+      wo_total: m.total_wos,
+      fcrRate:  fcrFailRate,   // failure rate (lower = better)
+      slaRate:  slaFailRate,
+      repeatRate, avgTrips: m.avg_trips, epaMissRate,
+      epaTotal, epaValid, score,
     };
   });
   return _storeScores;
@@ -303,25 +261,36 @@ function _renderDirectorTable(orgScores) {
 }
 
 function _renderKpis(storeScores) {
-  const scores   = Object.values(storeScores).map(s=>s.score).filter(s=>s!=null);
-  const avgScore = scores.length ? scores.reduce((a,b)=>a+b,0)/scores.length : null;
-  const allWos   = (TRAINING_WOS||[]);
-  const fcrWos   = allWos.filter(w=>(w.first_time_fix_compliance||'').toUpperCase()==='Y');
-  const fcrRate  = allWos.length ? fcrWos.length/allWos.length : null;
-  const slaWos   = allWos.filter(w=>(w.sla_repair_compliance||'').toUpperCase()==='Y');
-  const slaRate  = allWos.length ? slaWos.length/allWos.length : null;
+  const scoreList = Object.values(storeScores).map(s=>s.score).filter(s=>s!=null);
+  const avgScore  = scoreList.length ? scoreList.reduce((a,b)=>a+b,0)/scoreList.length : null;
+
+  // Global FCR/SLA from STORE_WO_METRICS
+  let totalFcrY=0, totalFcrN=0, totalSlaY=0, totalSlaW=0;
+  (STORE_WO_METRICS||[]).forEach(m => {
+    totalFcrY += m.fcr_y; totalFcrN += m.fcr_n;
+    totalSlaY += m.sla_y; totalSlaW += m.sla_n;
+  });
+  const fcrDen = totalFcrY+totalFcrN;
+  const slaDen = totalSlaY+totalSlaW;
+  const fcrRate = fcrDen > 0 ? totalFcrY/fcrDen : null;
+  const slaRate = slaDen > 0 ? totalSlaY/slaDen : null;
+
   const techTotal = (TECH_ALIGNMENT||[]).length;
-  const epaTot   = (EPA_CERTS||[]).length;
-  const today    = new Date();
-  const epaValid = (EPA_CERTS||[]).filter(c=>c.expiry_date && new Date(c.expiry_date)>today).length;
-  const epaPct   = epaTot ? epaValid/epaTot : null;
+  const today     = new Date();
+  const epaTot    = (EPA_CERTS||[]).length;
+  const epaValid  = (EPA_CERTS||[]).filter(c=>c.expiry_date&&new Date(c.expiry_date)>today).length;
+  const epaPct    = epaTot ? epaValid/epaTot : null;
 
   const cards = [
-    { label:'Active Techs',      val: fmt(techTotal),       sub:'in alignment',      color:'text-wmt-blue' },
-    { label:'Avg Gap Score',     val: avgScore!=null?Math.round(avgScore)+'':'—', sub:'0=none · 100=critical', color: avgScore>=70?'text-wmt-red':avgScore>=40?'text-yellow-600':'text-green-700' },
-    { label:'First-Call Fix',    val: fcrRate!=null?pct(fcrRate*100):'—', sub:'HVACR WOs (18mo)', color: fcrRate<0.7?'text-wmt-red':'text-green-700' },
-    { label:'SLA Compliance',    val: slaRate!=null?pct(slaRate*100):'—', sub:'repair on time',  color: slaRate<0.7?'text-wmt-red':'text-green-700' },
-    { label:'EPA Cert Valid',    val: epaPct!=null?pct(epaPct*100):'—',  sub:`${fmt(epaValid)} of ${fmt(epaTot)}`, color: epaPct<0.9?'text-wmt-red':'text-green-700' },
+    { label:'Active Techs',   val: fmt(techTotal),  sub:'in alignment',     color:'text-wmt-blue' },
+    { label:'Avg Gap Score',  val: avgScore!=null?Math.round(avgScore)+'':'—', sub:'0=none · 100=critical',
+      color: avgScore>=70?'text-wmt-red':avgScore>=40?'text-yellow-600':'text-green-700' },
+    { label:'First-Call Fix', val: fcrRate!=null?pct(fcrRate*100):'—', sub:'HVACR WOs (18mo)',
+      color: fcrRate!=null&&fcrRate<0.7?'text-wmt-red':'text-green-700' },
+    { label:'SLA Compliance', val: slaRate!=null?pct(slaRate*100):'—', sub:'repair on time',
+      color: slaRate!=null&&slaRate<0.7?'text-wmt-red':'text-green-700' },
+    { label:'EPA Cert Valid', val: epaPct!=null?pct(epaPct*100):'—', sub:`${fmt(epaValid)} of ${fmt(epaTot)}`,
+      color: epaTot>0&&epaPct<0.9?'text-wmt-red':'text-green-700' },
   ];
   document.getElementById('overview-kpis').innerHTML = cards.map(c=>`
     <div class="kpi-card bg-white rounded-xl shadow p-4">
@@ -333,11 +302,11 @@ function _renderKpis(storeScores) {
 
 function _renderInsight(storeScores, orgScores) {
   const highNeed = Object.values(storeScores).filter(s=>s.score>=70).length;
-  const topSr = orgScores[0];
-  const woCount = (TRAINING_WOS||[]).length;
+  const topSr    = orgScores[0];
+  const totalWos = (STORE_WO_METRICS||[]).reduce((a,m)=>a+m.total_wos, 0);
   document.getElementById('overview-insight').innerHTML = `
     <strong>💡 Training Intelligence Summary:</strong>
-    Analyzing <strong>${fmt(woCount)}</strong> HVACR work orders over the last 18 months across
+    Analyzing <strong>${fmt(totalWos)}</strong> HVACR work orders over the last 18 months across
     <strong>${fmt(Object.keys(storeScores).length)}</strong> stores.
     <strong>${fmt(highNeed)}</strong> stores have a High Training Need score (≥70).
     ${topSr ? `Sr Director <strong>${topSr.sr}</strong> has the highest average gap score

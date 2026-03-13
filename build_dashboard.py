@@ -50,6 +50,14 @@ top_gun     = load("top_gun")
 pm_comply   = load("pm_compliance")
 
 
+def _f(v):
+    """Coerce to float, None on failure."""
+    try:
+        return float(v) if v not in (None, "") else None
+    except (ValueError, TypeError):
+        return None
+
+
 # ── Build store-to-org mapping from tech_stores ──────────────────────
 # Each row: user_id, store_nbr, rm, director, sr_director, store_type
 
@@ -67,40 +75,80 @@ for row in tech_stores:
     }
 
 
-# ── Enrich WOs with org hierarchy + normalise types ──────────────────
+# ── Pre-aggregate WO data (don't embed 298K raw rows!) ─────────────────
+#
+# Produce two compact structures:
+#   STORE_WO_METRICS  - one row per store with WO stats
+#   PROB_METRICS      - one row per problem code with global stats
+#
 
-print("  Enriching work orders…")
+print("  Aggregating work order data…")
 
-def _f(v):
-    """Coerce to float, None on failure."""
-    try:
-        return float(v) if v not in (None, "") else None
-    except (ValueError, TypeError):
-        return None
+store_agg: dict = {}
+prob_agg:  dict = {}
 
-compact_wos = []
 for w in training_wo:
-    sn  = str(w.get("store_nbr") or "").strip()
-    org = store_org.get(sn, {})
-    compact_wos.append({
-        "sn":  sn,
-        "tr":  w.get("trade") or "",
-        "prob":w.get("problem_code_desc") or "",
-        "st":  w.get("status_name") or "",
-        "od":  str(w.get("open_date") or "")[:10],
-        "nte": _f(w.get("not_to_exceed_amt")),
-        "trip":_f(w.get("trip_count")),
-        "fcr": (w.get("first_time_fix_compliance") or "").upper() or None,
-        "sla": (w.get("sla_repair_compliance")     or "").upper() or None,
-        "tech":w.get("orig_hvacr_tech") or "",
-        "rm":  org.get("rm",  ""),
-        "dir": org.get("dir", ""),
-        "sr":  org.get("sr",  ""),
-        "store_type": org.get("st", ""),
-        # Keep these for filtering compatibility with overview_js
-        "sr_director": org.get("sr", ""),
-        "director":    org.get("dir", ""),
-    })
+    sn    = str(w.get("store_nbr") or "").strip()
+    prob  = (w.get("problem_code_desc") or "Unknown").strip() or "Unknown"
+    fcr_v = (w.get("first_time_fix_compliance") or "").strip().upper()
+    sla_v = (w.get("sla_repair_compliance")     or "").strip().upper()
+    trips = _f(w.get("trip_count")) or 0.0
+
+    # Store aggregation
+    if sn not in store_agg:
+        store_agg[sn] = {
+            "store_nbr":   sn,
+            "sr_director": w.get("fm_sr_director")  or "",
+            "director":    w.get("fm_director")      or "",
+            "rm":          w.get("fm_regional_mgr") or "",
+            "store_type":  w.get("store_type_name") or "",
+            "total_wos":   0,
+            "fcr_y": 0, "fcr_n": 0,
+            "sla_y": 0, "sla_n": 0,
+            "trip_sum": 0.0, "trip_n": 0,
+            "prob_counts": {},
+        }
+    s = store_agg[sn]
+    s["total_wos"] += 1
+    if fcr_v == "Y": s["fcr_y"] += 1
+    elif fcr_v == "N": s["fcr_n"] += 1
+    if sla_v == "Y": s["sla_y"] += 1
+    elif sla_v == "N": s["sla_n"] += 1
+    if trips > 0:
+        s["trip_sum"] += trips
+        s["trip_n"]   += 1
+    s["prob_counts"][prob] = s["prob_counts"].get(prob, 0) + 1
+
+    # Global problem code aggregation
+    if prob not in prob_agg:
+        prob_agg[prob] = {"prob": prob, "total": 0, "fcr_y": 0, "fcr_n": 0, "repeat_wos": 0}
+    p = prob_agg[prob]
+    p["total"] += 1
+    if fcr_v == "Y": p["fcr_y"] += 1
+    elif fcr_v == "N": p["fcr_n"] += 1
+
+# Compute per-store repeat WOs & finalise
+for s in store_agg.values():
+    repeat_wos = sum(n for n in s["prob_counts"].values() if n > 1)
+    top_entries = sorted(s["prob_counts"].items(), key=lambda x: -x[1])
+    s["repeat_wos"]  = repeat_wos
+    s["top_prob"]    = top_entries[0][0] if top_entries else ""
+    s["avg_trips"]   = round(s["trip_sum"] / s["trip_n"], 2) if s["trip_n"] else None
+    del s["prob_counts"], s["trip_sum"], s["trip_n"]  # don't embed prob_counts raw
+
+# Compact problem-code list (top 100 by volume)
+prob_list = sorted(prob_agg.values(), key=lambda x: -x["total"])[:100]
+# Compute repeat count from store_agg
+for p in prob_list:
+    # Already summed in loop above; compute cross-store repeat signal
+    p["fcr_rate"] = round(p["fcr_y"] / (p["fcr_y"]+p["fcr_n"]), 3) \
+        if (p["fcr_y"]+p["fcr_n"]) > 0 else None
+
+store_wo_list = list(store_agg.values())
+
+print(f"  Store WO metrics: {len(store_wo_list):,} stores")
+print(f"  Problem codes:    {len(prob_list):,}")
+
 
 
 # ── Compact exam reg ────────────────────────────────────────────────
@@ -144,39 +192,85 @@ compact_tech = [{
 } for t in tech_align]
 
 
-# ── Compact tech-stores (keep only what JS needs) ────────────────────
+# ── Compact tech-stores (only user_id + store_nbr for EPA join) ──────────
+# EPA_CERTS is empty right now so this is lightweight; keep the join ready.
 
-compact_tech_stores = [{
-    "user_id":     str(ts.get("user_id") or ""),
-    "tech_name":   ts.get("tech_name") or "",
-    "store_nbr":   str(ts.get("store_nbr") or ""),
-    "store_type":  ts.get("store_type") or "",
-    "rm":          ts.get("rm") or "",
-    "director":    ts.get("director") or "",
-    "sr_director": ts.get("sr_director") or "",
-} for ts in tech_stores]
+compact_tech_stores = [
+    {"user_id": str(ts.get("user_id") or ""), "store_nbr": str(ts.get("store_nbr") or "")}
+    for ts in tech_stores
+    if ts.get("user_id") and ts.get("store_nbr")
+]
 
 
-# ── Compact observations ─────────────────────────────────────────────
+# ── Pre-aggregate observations (don't embed 39K raw rows) ─────────────────
+#
+# Produce compact structures the JS can use directly:
+#   OBS_STATS      - KPI totals
+#   OBS_GROUPS     - [{group, count}] sorted by count
+#   OBS_TREND      - [{key, count}] weekly trend (last 26 weeks)
+#   OBS_SR_LIST    - sorted list of Sr Directors (for filter)
+#   OBS_GROUP_LIST - sorted list of Question Groups (for filter)
+#   OBS_ROWS       - most recent 500 rows for the detail table
+#
 
-compact_obs = [{
-    "Question_group":    o.get("Question_group") or "",
-    "question":          o.get("question") or "",
-    "answer":            o.get("answer") or "",
-    "User_Id":           str(o.get("User_Id") or ""),
-    "tech_name":         o.get("tech_name") or "",
-    "Org_Role":          o.get("Org_Role") or "",
-    "Supervisor_Name":   o.get("Supervisor_Name") or "",
-    "Direct_Manager":    o.get("Direct_Manager") or "",
-    "FM_Sr_Director":    o.get("FM_Sr_Director") or "",
-    "FM_Director":       o.get("FM_Director") or "",
-    "FM_Regional_Manager": o.get("FM_Regional_Manager") or "",
-    "Store":             str(o.get("Store") or ""),
-    "Date":              str(o.get("Date") or "")[:10],
-    "status":            o.get("status") or "",
-    "wmt_year_nbr":      int(o["wmt_year_nbr"]) if o.get("wmt_year_nbr") else None,
-    "wmt_week_of_year_nbr": int(o["wmt_week_of_year_nbr"]) if o.get("wmt_week_of_year_nbr") else None,
-} for o in observations]
+obs_group_counts: dict = {}
+obs_week_counts:  dict = {}
+obs_sr_set:       set  = set()
+obs_group_set:    set  = set()
+obs_uid_set:      set  = set()
+obs_store_set:    set  = set()
+
+for o in observations:
+    grp  = o.get("Question_group") or "Unknown"
+    yr   = o.get("wmt_year_nbr")
+    wk   = o.get("wmt_week_of_year_nbr")
+    sr   = o.get("FM_Sr_Director") or ""
+    uid  = o.get("User_Id") or ""
+    sn   = str(o.get("Store") or "")
+
+    obs_group_counts[grp]  = obs_group_counts.get(grp, 0) + 1
+    obs_group_set.add(grp)
+    if sr:  obs_sr_set.add(sr)
+    if uid: obs_uid_set.add(uid)
+    if sn:  obs_store_set.add(sn)
+    if yr and wk:
+        key = f"FY{yr}-W{str(wk).zfill(2)}"
+        obs_week_counts[key] = obs_week_counts.get(key, 0) + 1
+
+# Trend: sort all weeks, keep last 26
+all_weeks = sorted(obs_week_counts.keys())
+trend_weeks = all_weeks[-26:]
+obs_trend = [{"key": k, "count": obs_week_counts[k]} for k in trend_weeks]
+
+# Groups sorted by count desc
+obs_groups = [
+    {"group": g, "count": c}
+    for g, c in sorted(obs_group_counts.items(), key=lambda x: -x[1])
+]
+
+obs_stats = {
+    "total":   len(observations),
+    "techs":   len(obs_uid_set),
+    "stores":  len(obs_store_set),
+    "groups":  len(obs_group_set),
+}
+
+# Keep 500 most recent rows for the detail table (Date desc)
+observations_sorted = sorted(
+    observations,
+    key=lambda o: str(o.get("Date") or ""),
+    reverse=True,
+)
+OBS_COLS = (
+    "Question_group", "question", "answer",
+    "User_Id", "tech_name", "Org_Role",
+    "Direct_Manager", "FM_Sr_Director",
+    "Store", "Date", "status",
+)
+compact_obs_rows = [
+    {k: str(o.get(k) or "")[:100] for k in OBS_COLS}
+    for o in observations_sorted[:500]
+]
 
 
 # ── EPA certs (pass-through, already clean) ─────────────────────────
@@ -210,11 +304,11 @@ compact_tg = [{
 # ── Summary stats ─────────────────────────────────────────────────────
 
 updated = datetime.now().strftime("%Y-%m-%d %H:%M")
-print(f"  Training WOs:  {len(compact_wos):,}")
+print(f"  Total WOs:     {len(training_wo):,} (raw, not embedded)")
 print(f"  Exam records:  {len(compact_exam):,}")
 print(f"  Technicians:   {len(compact_tech):,}")
-print(f"  Tech-stores:   {len(compact_tech_stores):,}")
-print(f"  Observations:  {len(compact_obs):,}")
+print(f"  Tech-stores:   {len(compact_tech_stores):,} (compact pairs)")
+print(f"  Observations:  {obs_stats['total']:,} → {len(compact_obs_rows)} table rows")
 print(f"  EPA certs:     {len(compact_epa):,}")
 print(f"  Top Gun:       {len(compact_tg):,}")
 
@@ -223,13 +317,25 @@ print(f"  Top Gun:       {len(compact_tg):,}")
 
 data_block = "<script>\n"
 data_block += js_var("DASHBOARD_UPDATED", updated)
-data_block += js_var("TRAINING_WOS",  compact_wos)
-data_block += js_var("EXAM_REG",       compact_exam)
-data_block += js_var("TECH_ALIGNMENT", compact_tech)
-data_block += js_var("TECH_STORES",    compact_tech_stores)
-data_block += js_var("OBSERVATIONS",   compact_obs)
-data_block += js_var("EPA_CERTS",      compact_epa)
-data_block += js_var("TOP_GUN",        compact_tg)
+# Pre-aggregated WO metrics (no raw row embed)
+data_block += js_var("STORE_WO_METRICS", store_wo_list)
+data_block += js_var("PROB_METRICS",     prob_list)
+# Exam records
+data_block += js_var("EXAM_REG",         compact_exam)
+# Technician roster
+data_block += js_var("TECH_ALIGNMENT",   compact_tech)
+# Tech-to-store pairs (compact: user_id + store_nbr only)
+data_block += js_var("TECH_STORES",      compact_tech_stores)
+# Observations - pre-aggregated + 500 recent rows
+data_block += js_var("OBS_STATS",        obs_stats)
+data_block += js_var("OBS_GROUPS",       obs_groups)
+data_block += js_var("OBS_TREND",        obs_trend)
+data_block += js_var("OBS_SR_LIST",      sorted(obs_sr_set))
+data_block += js_var("OBS_GROUP_LIST",   sorted(obs_group_set))
+data_block += js_var("OBS_ROWS",         compact_obs_rows)
+# EPA + Top Gun
+data_block += js_var("EPA_CERTS",        compact_epa)
+data_block += js_var("TOP_GUN",          compact_tg)
 data_block += "</script>\n"
 
 

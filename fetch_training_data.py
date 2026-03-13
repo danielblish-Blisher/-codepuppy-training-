@@ -95,7 +95,9 @@ run_query("exam_reg", """
 """)
 
 
-run_query("epa_certs", """
+# NOTE: epa_cert_audit_reports_full references us_re_fm_stage.epa_cert_audit_reports_agg
+# which requires additional permissions. Attempting query; will fall back to empty.
+ok = run_query("epa_certs", """
     SELECT
         full_name,
         user_id,
@@ -113,6 +115,13 @@ run_query("epa_certs", """
     FROM `re-ods-explorer.us_re_fm_prod.epa_cert_audit_reports_full`
     ORDER BY full_name
 """)
+if not ok:
+    import json as _json, os as _os
+    _path = _os.path.join(DATA_DIR, "epa_certs.json")
+    if not _os.path.exists(_path) or _os.path.getsize(_path) < 10:
+        with open(_path, "w") as _f:
+            _json.dump([], _f)
+    print("  ⚠️  epa_certs: no access to staging table — EPA tab will be empty")
 
 
 run_query("tech_alignment", """
@@ -132,7 +141,7 @@ run_query("tech_alignment", """
         mgr_technician_level,
         store_count
     FROM `re-ods-explorer.us_re_fm_prod.fsai_tech_alignment`
-    WHERE status = 'Active'
+    WHERE status LIKE '%Active%'
     ORDER BY last_name, first_name
 """)
 
@@ -146,14 +155,14 @@ run_query("tech_stores", """
         t.org_role,
         t.status,
         s.store_nbr,
-        s.type                AS store_type,
+        s.store_type_name                  AS store_type,
         s.delivery_model,
-        s.fm_regional_manager AS rm,
-        s.fm_director         AS director,
-        s.fm_sr_director      AS sr_director
+        s.fm_regional_manager_name         AS rm,
+        s.fm_director_name                 AS director,
+        s.fm_sr_director_name              AS sr_director
     FROM `re-ods-explorer.us_re_fm_prod.fsai_tech_alignment` t,
     UNNEST(t.store_info) AS s
-    WHERE t.status = 'Active'
+    WHERE t.status LIKE '%Active%'
     ORDER BY t.last_name, s.store_nbr
 """, max_rows=500_000)
 
@@ -162,12 +171,11 @@ run_query("training_workorders", """
     SELECT
         wo.tracking_nbr,
         wo.store_nbr,
-        wo.trade,
+        wo.trade_name,
         wo.problem_code_desc,
-        wo.status_name,
-        wo.open_date,
-        wo.completed_date,
-        wo.not_to_exceed_amt,
+        wo.status_extended_name             AS status_name,
+        wo.completion_date,
+        wo.nte                              AS not_to_exceed_amt,
         wo.trip_count,
         wo.total_repair_minutes,
         wo.sla_response_compliance,
@@ -176,16 +184,17 @@ run_query("training_workorders", """
         wo.orig_hvacr_tech,
         wo.latest_activity_tech,
         wo.latest_activity_tech_org_role,
-        wo.On_Call_Phase
+        wo.fm_sr_director,
+        wo.fm_director,
+        wo.fm_regional_mgr,
+        wo.store_type_name
     FROM `re-ods-explorer.us_re_fm_prod.fsai_workorders` wo
-    WHERE wo.trade IN (
-        'HVAC',
-        'HVACR',
-        'Refrigeration',
-        'HVAC/R'
+    WHERE (
+        wo.trade_name LIKE '%HVAC%'
+        OR wo.trade_name LIKE '%Refrig%'
     )
-    AND wo.open_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 18 MONTH)
-    ORDER BY wo.open_date DESC
+    AND wo.completion_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 18 MONTH)
+    ORDER BY wo.completion_date DESC
 """, max_rows=300_000)
 
 

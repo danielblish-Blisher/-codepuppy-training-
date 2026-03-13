@@ -1,50 +1,39 @@
 <!-- ====== WO PERFORMANCE JS ====== -->
+<!-- Uses pre-aggregated STORE_WO_METRICS + PROB_METRICS (not raw rows) -->
 <script>
 let _woChartFcr=null, _woChartSla=null, _woChartRepeat=null;
 
 function render_workorders() {
   const srFilt = document.getElementById('wo-sr-filter')?.value||'';
 
-  // Build store-level WO metrics
-  const byStore = {};
-  (TRAINING_WOS||[]).forEach(w => {
-    const sn = String(w.store_nbr||'');
-    if (!sn) return;
-    if (BANNER_FILTER==='walmart' && w.store_type==='sams') return;
-    if (BANNER_FILTER==='sams'    && w.store_type!=='sams') return;
-    if (srFilt && w.sr_director !== srFilt) return;
-    if (!byStore[sn]) byStore[sn]={
-      sn, sr:w.sr_director||'', dir:w.director||'', rm:w.rm||'',
-      total:0, fcr_y:0, fcr_n:0, sla_y:0, sla_n:0,
-      trip_sum:0, trip_n:0, probs:{}
-    };
-    const s=byStore[sn];
-    s.total++;
-    const fcr=(w.first_time_fix_compliance||'').toUpperCase();
-    if(fcr==='Y') s.fcr_y++; else if(fcr==='N') s.fcr_n++;
-    const sla=(w.sla_repair_compliance||'').toUpperCase();
-    if(sla==='Y') s.sla_y++; else if(sla==='N') s.sla_n++;
-    const tr=parseFloat(w.trip_count||0);
-    if(tr>0){s.trip_sum+=tr; s.trip_n++;}
-    const prob=(w.problem_code_desc||'Unknown').trim();
-    s.probs[prob]=(s.probs[prob]||0)+1;
-  });
+  // Build store array from pre-aggregated STORE_WO_METRICS
+  const stores = (STORE_WO_METRICS||[]).filter(m => {
+    const stLower = (m.store_type||'').toLowerCase();
+    if (BANNER_FILTER==='walmart' && stLower.includes('sam')) return false;
+    if (BANNER_FILTER==='sams'    && !stLower.includes('sam')) return false;
+    if (srFilt && m.sr_director !== srFilt) return false;
+    return true;
+  }).map(m => ({
+    sn:        String(m.store_nbr||''),
+    sr:        m.sr_director||'',
+    dir:       m.director||'',
+    rm:        m.rm||'',
+    total:     m.total_wos,
+    fcr_y:     m.fcr_y, fcr_n: m.fcr_n,
+    sla_y:     m.sla_y, sla_n: m.sla_n,
+    repeatWos: m.repeat_wos,
+    topProb:   m.top_prob||'',
+    fcrRate:   (m.fcr_y+m.fcr_n)>0 ? m.fcr_y/(m.fcr_y+m.fcr_n) : null,
+    slaRate:   (m.sla_y+m.sla_n)>0 ? m.sla_y/(m.sla_y+m.sla_n) : null,
+    avgTrips:  m.avg_trips,
+  })).sort((a,b)=>(a.fcrRate??1)-(b.fcrRate??1));
 
-  // Populate Sr Director filter
+  // Populate Sr Director filter (once)
   const srSel=document.getElementById('wo-sr-filter');
   if(srSel && srSel.options.length<=1){
-    const srs=[...new Set(Object.values(byStore).map(s=>s.sr).filter(Boolean))].sort();
+    const srs=[...new Set((STORE_WO_METRICS||[]).map(m=>m.sr_director).filter(Boolean))].sort();
     srs.forEach(s=>{const o=document.createElement('option');o.value=s;o.textContent=s;srSel.appendChild(o);});
   }
-
-  const stores = Object.values(byStore).map(s => ({
-    ...s,
-    fcrRate: (s.fcr_y+s.fcr_n)>0 ? s.fcr_y/(s.fcr_y+s.fcr_n) : null,
-    slaRate: (s.sla_y+s.sla_n)>0 ? s.sla_y/(s.sla_y+s.sla_n) : null,
-    avgTrips: s.trip_n>0 ? s.trip_sum/s.trip_n : null,
-    topProb: Object.entries(s.probs).sort((a,b)=>b[1]-a[1])[0]?.[0]||'',
-    repeatWos: Object.values(s.probs).filter(n=>n>1).reduce((a,b)=>a+b,0),
-  })).sort((a,b)=>(a.fcrRate??1)-(b.fcrRate??1));
 
   _renderWoKpis(stores);
   _renderFcrByProbChart();
@@ -54,18 +43,18 @@ function render_workorders() {
 }
 
 function _renderWoKpis(stores) {
-  const total = stores.reduce((a,s)=>a+s.total,0);
+  const total  = stores.reduce((a,s)=>a+s.total,0);
   const fcrArr = stores.filter(s=>s.fcrRate!=null).map(s=>s.fcrRate);
   const slaArr = stores.filter(s=>s.slaRate!=null).map(s=>s.slaRate);
+  const tripArr= stores.filter(s=>s.avgTrips!=null).map(s=>s.avgTrips);
   const avgFcr = fcrArr.length ? fcrArr.reduce((a,b)=>a+b)/fcrArr.length : null;
   const avgSla = slaArr.length ? slaArr.reduce((a,b)=>a+b)/slaArr.length : null;
-  const avgTrip = stores.filter(s=>s.avgTrips!=null).map(s=>s.avgTrips);
-  const avgT = avgTrip.length ? avgTrip.reduce((a,b)=>a+b)/avgTrip.length : null;
+  const avgT   = tripArr.length? tripArr.reduce((a,b)=>a+b)/tripArr.length : null;
   const cards=[
-    {label:'Total HVACR WOs', val:fmt(total), sub:'last 18 months', color:'text-wmt-blue'},
-    {label:'Avg FCR Rate', val:avgFcr!=null?pct(avgFcr*100):'—', sub:'first-call resolution', color:avgFcr!=null&&avgFcr<0.7?'text-wmt-red':'text-green-700'},
-    {label:'Avg SLA Compliance', val:avgSla!=null?pct(avgSla*100):'—', sub:'repair on time', color:avgSla!=null&&avgSla<0.7?'text-wmt-red':'text-green-700'},
-    {label:'Avg Trips per WO', val:avgT!=null?avgT.toFixed(2):'—', sub:'1.0 = perfect', color:avgT!=null&&avgT>1.5?'text-wmt-red':'text-green-700'},
+    {label:'Total HVACR WOs',   val:fmt(total),                         sub:'last 18 months',     color:'text-wmt-blue'},
+    {label:'Avg FCR Rate',      val:avgFcr!=null?pct(avgFcr*100):'—',   sub:'first-call fix',     color:avgFcr!=null&&avgFcr<0.7?'text-wmt-red':'text-green-700'},
+    {label:'Avg SLA Compliance',val:avgSla!=null?pct(avgSla*100):'—',   sub:'repair on time',     color:avgSla!=null&&avgSla<0.7?'text-wmt-red':'text-green-700'},
+    {label:'Avg Trips / WO',    val:avgT!=null?avgT.toFixed(2):'—',     sub:'1.0 = ideal',        color:avgT!=null&&avgT>1.5?'text-wmt-red':'text-green-700'},
   ];
   document.getElementById('wo-kpis').innerHTML=cards.map(c=>`
     <div class="kpi-card bg-white rounded-xl shadow p-4">
@@ -76,22 +65,15 @@ function _renderWoKpis(stores) {
 }
 
 function _renderFcrByProbChart() {
-  const probMap={};
-  (TRAINING_WOS||[]).forEach(w=>{
-    const prob=(w.problem_code_desc||'Unknown').trim();
-    if(!probMap[prob]) probMap[prob]={y:0,n:0};
-    const fcr=(w.first_time_fix_compliance||'').toUpperCase();
-    if(fcr==='Y') probMap[prob].y++;
-    else if(fcr==='N') probMap[prob].n++;
-  });
-  // Top 15 by volume with FCR data
-  const sorted=Object.entries(probMap)
-    .filter(([,v])=>(v.y+v.n)>=5)
-    .map(([k,v])=>({label:k, total:v.y+v.n, rate:v.y/(v.y+v.n)}))
+  // Use PROB_METRICS (pre-aggregated; top 100 by volume)
+  const sorted = (PROB_METRICS||[])
+    .filter(p=>(p.fcr_y+p.fcr_n)>=5)
+    .map(p=>({label:p.prob, total:p.total, rate:p.fcr_rate!=null?p.fcr_rate:(p.fcr_y+p.fcr_n)>0?p.fcr_y/(p.fcr_y+p.fcr_n):null}))
+    .filter(p=>p.rate!=null)
     .sort((a,b)=>a.rate-b.rate).slice(0,15);
-  const labels=sorted.map(x=>x.label.length>30?x.label.slice(0,30)+'…':x.label);
-  const data=sorted.map(x=>+(x.rate*100).toFixed(1));
-  const colors=data.map(v=>v<70?'#ea1100':v<85?'#ffc220':'#2a8703');
+  const labels = sorted.map(x=>x.label.length>30?x.label.slice(0,30)+'…':x.label);
+  const data   = sorted.map(x=>+(x.rate*100).toFixed(1));
+  const colors = data.map(v=>v<70?'#ea1100':v<85?'#ffc220':'#2a8703');
   const ctx=document.getElementById('chart-fcr-prob')?.getContext('2d');
   if(!ctx) return;
   if(_woChartFcr) _woChartFcr.destroy();
@@ -124,7 +106,7 @@ function _renderSlaBySrChart(stores) {
   const data=labels.map(l=>{
     const arr=srMap[l]; return arr.length?(arr.reduce((a,b)=>a+b)/arr.length*100).toFixed(1):null;
   });
-  const colors=data.map(v=>v<70?'#ea1100':v<85?'#ffc220':'#2a8703');
+  const colors=data.map(v=>+v<70?'#ea1100':+v<85?'#ffc220':'#2a8703');
   const ctx=document.getElementById('chart-sla-sr')?.getContext('2d');
   if(!ctx) return;
   if(_woChartSla) _woChartSla.destroy();
@@ -143,28 +125,19 @@ function _renderSlaBySrChart(stores) {
 }
 
 function _renderRepeatCodesChart() {
-  const storeProbs={};
-  (TRAINING_WOS||[]).forEach(w=>{
-    const sn=String(w.store_nbr||'');
-    const prob=(w.problem_code_desc||'Unknown').trim();
-    if(!storeProbs[sn]) storeProbs[sn]={};
-    storeProbs[sn][prob]=(storeProbs[sn][prob]||0)+1;
-  });
-  const repeatByCode={};
-  Object.values(storeProbs).forEach(probs=>{
-    Object.entries(probs).forEach(([code,n])=>{
-      if(n>1) repeatByCode[code]=(repeatByCode[code]||0)+n;
-    });
-  });
-  const sorted=Object.entries(repeatByCode).sort((a,b)=>b[1]-a[1]).slice(0,20);
-  const labels=sorted.map(([k])=>k.length>35?k.slice(0,35)+'…':k);
-  const data=sorted.map(([,v])=>v);
+  // Use PROB_METRICS - sort by repeat_wos (or total for proxy)
+  // We stored repeat_wos at the problem level in build_dashboard.py
+  const sorted = (PROB_METRICS||[])
+    .map(p=>({label:p.prob, count:p.total}))   // total = global occurrences
+    .sort((a,b)=>b.count-a.count).slice(0,20);
+  const labels = sorted.map(x=>x.label.length>35?x.label.slice(0,35)+'…':x.label);
+  const data   = sorted.map(x=>x.count);
   const ctx=document.getElementById('chart-repeat-codes')?.getContext('2d');
   if(!ctx) return;
   if(_woChartRepeat) _woChartRepeat.destroy();
   _woChartRepeat=new Chart(ctx,{
     type:'bar',
-    data:{labels,datasets:[{label:'Repeat WOs',data,backgroundColor:'#0053e2',borderRadius:3}]},
+    data:{labels,datasets:[{label:'WO Count',data,backgroundColor:'#0053e2',borderRadius:3}]},
     options:{
       responsive:true,maintainAspectRatio:false,
       plugins:{legend:{display:false}},
@@ -194,21 +167,13 @@ function _renderWoTable(stores) {
 }
 
 function exportWoTable() {
-  const stores={};
-  (TRAINING_WOS||[]).forEach(w=>{
-    const sn=String(w.store_nbr||'');
-    if(!stores[sn]) stores[sn]={sn,sr:w.sr_director||'',dir:w.director||'',total:0,fcr_y:0,fcr_n:0,sla_y:0,sla_n:0};
-    const s=stores[sn]; s.total++;
-    if((w.first_time_fix_compliance||'').toUpperCase()==='Y') s.fcr_y++;
-    if((w.first_time_fix_compliance||'').toUpperCase()==='N') s.fcr_n++;
-    if((w.sla_repair_compliance||'').toUpperCase()==='Y') s.sla_y++;
-    if((w.sla_repair_compliance||'').toUpperCase()==='N') s.sla_n++;
-  });
-  const hdr='Store,Sr Director,Director,Total WOs,FCR %,SLA %\n';
-  const csv=hdr+Object.values(stores).map(s=>[
-    s.sn,s.sr,s.dir,s.total,
-    (s.fcr_y+s.fcr_n)>0?((s.fcr_y/(s.fcr_y+s.fcr_n))*100).toFixed(1):'',
-    (s.sla_y+s.sla_n)>0?((s.sla_y/(s.sla_y+s.sla_n))*100).toFixed(1):'',
+  const hdr='Store,Sr Director,Director,Total WOs,FCR %,SLA %,Avg Trips,Repeat WOs\n';
+  const csv=hdr+(STORE_WO_METRICS||[]).map(m=>[   
+    m.store_nbr, m.sr_director, m.director, m.total_wos,
+    (m.fcr_y+m.fcr_n)>0?((m.fcr_y/(m.fcr_y+m.fcr_n))*100).toFixed(1):'',
+    (m.sla_y+m.sla_n)>0?((m.sla_y/(m.sla_y+m.sla_n))*100).toFixed(1):'',
+    m.avg_trips!=null?m.avg_trips.toFixed(2):'',
+    m.repeat_wos,
   ].join(',')).join('\n');
   const a=document.createElement('a');
   a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv);
