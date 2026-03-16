@@ -1,2 +1,0 @@
-# No pip dependencies - uses bq CLI (pre-installed with gcloud SDK)
-# and standard library only
