@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FM Trades Training Intelligence Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
+    <script>
+        tailwind.config = {
+            theme: { extend: { colors: {
+                walmart: { blue: '#0053e2', yellow: '#ffc220', dark: '#003aa3', light: '#f0f4ff' }
+            }}}
+        }
+    </script>
+    <style>
+        .kpi-card { transition: transform 0.2s, box-shadow 0.2s; }
+        .kpi-card:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,83,226,0.12); }
+        .table-row:hover { background-color: #f0f4ff; }
+        .tab-active { border-bottom-color: #0053e2 !important; color: #0053e2 !important; }
+        .tab-btn { transition: color 0.15s, border-color 0.15s; }
+        nav[role="tablist"] { scrollbar-width: thin; }
+        nav[role="tablist"]::-webkit-scrollbar { height: 3px; }
+        nav[role="tablist"]::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+        .badge-red    { background:#fef2f2; color:#ea1100; border:1px solid #fecaca; }
+        .badge-yellow { background:#fffbeb; color:#995213; border:1px solid #fde68a; }
+        .badge-green  { background:#f0fdf4; color:#2a8703; border:1px solid #bbf7d0; }
+        .badge-blue   { background:#eff6ff; color:#0053e2; border:1px solid #bfdbfe; }
+        .sort-btn { cursor:pointer; user-select:none; }
+        .sort-btn:hover { color: #0053e2; }
+        input[type=text], select {
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+            padding: 0.4rem 0.75rem;
+            font-size: 0.85rem;
+            outline: none;
+            transition: border-color 0.15s;
+        }
+        input[type=text]:focus, select:focus { border-color: #0053e2; box-shadow: 0 0 0 2px rgba(0,83,226,0.15); }
+        .chart-wrap { position: relative; }
+        @media (max-width: 640px) {
+            nav[role="tablist"] button { padding: 0.75rem 0.5rem; font-size: 0.72rem; }
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+<script>Chart.register(ChartDataLabels); Chart.defaults.plugins.datalabels = { display: false };</script>
+<script>
+    // ── Embedded Data ──────────────────────────────────────────────────────
+    const GENERATED        = '__GENERATED__';
+    const REPEATS_BY_TRADE = __REPEATS_BY_TRADE__;
+    const PROBLEM_CODES    = __PROBLEM_CODES__;
+    const STORE_HOTSPOTS   = __STORE_HOTSPOTS__;
+    const MONTHLY_TREND    = __MONTHLY_TREND__;
+    const REPEAT_DETAIL    = __REPEAT_DETAIL__;
+    const TECH_REPEATS     = __TECH_REPEATS__;
+    const TECH_OUTPUT      = __TECH_OUTPUT__;
+    const METRIC_PULSE     = __METRIC_PULSE__;
+    const SC_WO_URL        = 'https://www.servicechannel.com/sc/wo/Workorders/index?id=';
+
+    let currentTab = 'overview';
+    function switchTab(name) {
+        document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+        document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('tab-active'));
+        const content = document.getElementById(name + '-content');
+        const btn = document.getElementById('tab-' + name);
+        if (content) content.classList.remove('hidden');
+        if (btn) btn.classList.add('tab-active');
+        currentTab = name;
+        if (name === 'overview'  && typeof renderOverview  === 'function') renderOverview();
+        if (name === 'gaps'      && typeof renderGaps      === 'function') renderGaps();
+        if (name === 'trade'     && typeof renderTrade     === 'function') renderTrade();
+        if (name === 'store'     && typeof renderStore     === 'function') renderStore();
+        if (name === 'trends'    && typeof renderTrends    === 'function') renderTrends();
+        if (name === 'techout'   && typeof renderTechOut   === 'function') renderTechOut();
+        if (name === 'metricpulse' && typeof renderMetricPulse === 'function') renderMetricPulse();
+    }
+
+    // Shared helpers
+    function num(v) { const n = parseFloat(v); return isNaN(n) ? 0 : n; }
+    function pct(n, d) { return d ? Math.round((n / d) * 100) : 0; }
+    function fmt(n) { return Number(n).toLocaleString(); }
+    function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+    function urgencyBadge(d) {
+        const days = num(d);
+        if (days <= 30)  return '<span class="badge-red    px-2 py-0.5 rounded-full text-xs font-semibold">' + days + 'd</span>';
+        if (days <= 90)  return '<span class="badge-yellow px-2 py-0.5 rounded-full text-xs font-semibold">' + days + 'd</span>';
+        return                   '<span class="badge-green  px-2 py-0.5 rounded-full text-xs font-semibold">' + days + 'd</span>';
+    }
+</script>

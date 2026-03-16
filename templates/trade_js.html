@@ -1,0 +1,132 @@
+<script>
+// ── By Trade Tab JS ─────────────────────────────────────────────────
+let _tradeFull, _tradeDonut;
+let _tradeBootstrapped = false;
+
+function renderTrade() {
+    if (!_tradeBootstrapped) _bootstrapTrade();
+    _renderTradeFull();
+    _renderTradeDonut();
+    _renderTradeCodes();
+    _renderTradeSummary();
+}
+
+function _bootstrapTrade() {
+    _tradeBootstrapped = true;
+    const sel = document.getElementById('trade-selector');
+    const trades = [...new Set(REPEATS_BY_TRADE.map(r => r.trade))].sort();
+    trades.forEach(t => {
+        const o = document.createElement('option');
+        o.value = t; o.textContent = t.replace('FM - ','').replace('PM - ','').replace('CF - ','');
+        sel.appendChild(o);
+    });
+}
+
+function _renderTradeFull() {
+    if (_tradeFull) { _tradeFull.destroy(); _tradeFull = null; }
+    const data = REPEATS_BY_TRADE.slice(0, 15);
+    const ctx = document.getElementById('tradeFull').getContext('2d');
+    _tradeFull = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: data.map(r => r.trade.replace('FM - ','').replace('PM - ','')),
+            datasets: [
+                { label: '≤90d', data: data.map(r => num(r.repeats_90d)),  backgroundColor: '#ea1100', borderRadius: 4 },
+                { label: '91–180d', data: data.map(r => num(r.repeats_180d) - num(r.repeats_90d)), backgroundColor: '#ffc220', borderRadius: 4 },
+                { label: '181–365d', data: data.map(r => num(r.repeats_365d) - num(r.repeats_180d)), backgroundColor: '#0053e2', borderRadius: 4 },
+            ]
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { position: 'bottom', labels: { font: { size: 10 } } }, datalabels: { display: false } },
+            scales: { x: { stacked: true, ticks: { font: { size: 9 } } }, y: { stacked: true, beginAtZero: true } }
+        }
+    });
+}
+
+function _renderTradeDonut() {
+    if (_tradeDonut) { _tradeDonut.destroy(); _tradeDonut = null; }
+    const total90  = REPEATS_BY_TRADE.reduce((a,r) => a + num(r.repeats_90d), 0);
+    const total180 = REPEATS_BY_TRADE.reduce((a,r) => a + num(r.repeats_180d) - num(r.repeats_90d), 0);
+    const total365 = REPEATS_BY_TRADE.reduce((a,r) => a + num(r.repeats_365d) - num(r.repeats_180d), 0);
+    const ctx = document.getElementById('tradeDonut').getContext('2d');
+    _tradeDonut = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: ['≤90 days (Urgent)', '91–180 days', '181–365 days'],
+            datasets: [{ data: [total90, total180, total365], backgroundColor: ['#ea1100','#ffc2e2'], borderWidth: 2 }]
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: {
+                legend: { position: 'bottom', labels: { font: { size: 11 } } },
+                datalabels: {
+                    display: true,
+                    formatter: (v, ctx) => {
+                        const total = ctx.dataset.data.reduce((a,b) => a+b, 0);
+                        return total ? pct(v,total) + '%' : '';
+                    },
+                    color: '#fff', font: { weight: 'bold', size: 13 }
+                }
+            }
+        }
+    });
+}
+
+function _renderTradeCodes() {
+    const filterTrade = document.getElementById('trade-selector')?.value || '';
+    const codes = filterTrade
+        ? PROBLEM_CODES.filter(r => r.trade === filterTrade)
+        : PROBLEM_CODES.slice(0, 25);
+    const tbody = document.getElementById('trade-codes-body');
+    if (!tbody) return;
+    tbody.innerHTML = codes.map((r, i) => {
+        const pct90 = pct(num(r.within_90d), num(r.repeat_count));
+        let priority, cls;
+        if (pct90 >= 60) { priority = '🔴 High';   cls = 'badge-red'; }
+        else if (pct90 >= 30) { priority = '🟡 Medium'; cls = 'badge-yellow'; }
+        else { priority = '🟢 Low';    cls = 'badge-green'; }
+        return `
+        <tr class="table-row border-b border-gray-50 ${i%2===0?'bg-white':'bg-gray-50/40'}">
+            <td class="px-3 py-2 text-xs">
+                <span class="badge-blue px-2 py-0.5 rounded text-xs">${esc(r.trade.replace('FM - ','').replace('PM - ',''))}</span>
+            </td>
+            <td class="px-3 py-2 font-medium text-gray-800">${esc(r.problem_code)}</td>
+            <td class="px-3 py-2 text-right font-bold text-[#0053e2]">${fmt(r.repeat_count)}</td>
+            <td class="px-3 py-2 text-right text-gray-600">${fmt(r.stores_affected)}</td>
+            <td class="px-3 py-2 text-right">${fmt(r.within_90d)} <span class="text-gray-400 text-xs">(${pct90}%)</span></td>
+            <td class="px-3 py-2"><span class="${cls} px-2 py-0.5 rounded text-xs">${priority}</span></td>
+        </tr>`;
+    }).join('');
+}
+
+function _renderTradeSummary() {
+    const tbody = document.getElementById('trade-summary-body');
+    if (!tbody) return;
+    tbody.innerHTML = REPEATS_BY_TRADE.map((r, i) => {
+        const gapScore = Math.round(
+            (num(r.repeats_90d) / Math.max(num(r.total_repeats), 1)) * 100
+        );
+        const barW = Math.min(gapScore, 100);
+        const barCol = gapScore >= 60 ? '#ea1100' : gapScore >= 30 ? '#ffc220' : '#2a8703';
+        return `
+        <tr class="table-row border-b border-gray-50 ${i%2===0?'bg-white':'bg-gray-50/40'}">
+            <td class="px-3 py-2 font-medium">${esc(r.trade.replace('FM - ','').replace('PM - ',''))}</td>
+            <td class="px-3 py-2 text-right font-bold text-[#0053e2]">${fmt(r.total_repeats)}</td>
+            <td class="px-3 py-2 text-right text-gray-600">${fmt(r.stores_affected)}</td>
+            <td class="px-3 py-2 text-right text-gray-600">${fmt(r.assets_affected)}</td>
+            <td class="px-3 py-2 text-right text-red-600 font-semibold">${fmt(r.repeats_90d)}</td>
+            <td class="px-3 py-2 text-right text-amber-600">${fmt(r.repeats_180d)}</td>
+            <td class="px-3 py-2 text-right text-[#0053e2]">${fmt(r.repeats_365d)}</td>
+            <td class="px-3 py-2">
+                <div class="flex items-center gap-2">
+                    <div class="flex-1 bg-gray-100 rounded-full h-2">
+                        <div class="h-2 rounded-full" style="width:${barW}%;background:${barCol}"></div>
+                    </div>
+                    <span class="text-xs font-semibold" style="color:${barCol}">${gapScore}%</span>
+                </div>
+            </td>
+        </tr>`;
+    }).join('');
+}
+</script>

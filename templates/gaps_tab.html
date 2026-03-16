@@ -1,0 +1,85 @@
+<!-- Training Gaps Tab -->
+<div id="gaps-content" class="tab-content hidden">
+
+    <!-- Header -->
+    <div class="bg-gradient-to-r from-[#0053e2] to-[#003aa3] text-white rounded-xl p-5 mb-5">
+        <h2 class="text-xl font-bold mb-1">🔍 Training Gap Finder</h2>
+        <p class="text-blue-100 text-sm">
+            Repeat work orders on the same asset within 90 days = a skill or process gap.
+            Use the filters below to find where training is needed most.
+        </p>
+    </div>
+
+    <!-- Filters -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4 mb-5">
+        <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+            <div class="col-span-2">
+                <label class="block text-xs text-gray-500 mb-1">Search (store, asset, problem, tech)</label>
+                <input type="text" id="gaps-search" placeholder="Type to search..."
+                    oninput="renderGaps()" class="w-full">
+            </div>
+            <div>
+                <label class="block text-xs text-gray-500 mb-1">Trade</label>
+                <select id="gaps-trade" onchange="renderGaps()" class="w-full">
+                    <option value="">All Trades</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-xs text-gray-500 mb-1">State</label>
+                <select id="gaps-state" onchange="renderGaps()" class="w-full">
+                    <option value="">All States</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-xs text-gray-500 mb-1">Director</label>
+                <select id="gaps-director" onchange="renderGaps()" class="w-full">
+                    <option value="">All Directors</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-xs text-gray-500 mb-1">Urgency</label>
+                <select id="gaps-urgency" onchange="renderGaps()" class="w-full">
+                    <option value="">Any</option>
+                    <option value="30">Within 30 days</option>
+                    <option value="60">Within 60 days</option>
+                    <option value="90">Within 90 days</option>
+                </select>
+            </div>
+        </div>
+        <div class="flex items-center justify-between mt-3">
+            <p class="text-xs text-gray-500" id="gaps-count"></p>
+            <button onclick="gapsClearFilters()" class="text-xs text-[#0053e2] hover:underline">Clear filters</button>
+        </div>
+    </div>
+
+    <!-- Table -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm" id="gaps-table">
+                <thead>
+                    <tr class="bg-gray-50 text-gray-600 text-xs uppercase tracking-wide">
+                        <th class="px-3 py-3 text-left sort-btn" onclick="gapsSort('call_date')">Date ↕</th>
+                        <th class="px-3 py-3 text-left sort-btn" onclick="gapsSort('store_nbr')">Store ↕</th>
+                        <th class="px-3 py-3 text-left">Location</th>
+                        <th class="px-3 py-3 text-left sort-btn" onclick="gapsSort('trade')">Trade ↕</th>
+                        <th class="px-3 py-3 text-left">Problem Code</th>
+                        <th class="px-3 py-3 text-left">Asset Tag</th>
+                        <th class="px-3 py-3 text-center sort-btn" onclick="gapsSort('days_between')">Days Back ↕</th>
+                        <th class="px-3 py-3 text-left">Previous WO</th>
+                        <th class="px-3 py-3 text-left">Tech / Provider</th>
+                        <th class="px-3 py-3 text-left">Director</th>
+                        <th class="px-3 py-3 text-center">WO Link</th>
+                    </tr>
+                </thead>
+                <tbody id="gaps-body"></tbody>
+            </table>
+        </div>
+        <div class="px-4 py-3 border-t border-gray-100 flex items-center justify-between">
+            <button onclick="gapsPrev()" id="gaps-prev"
+                class="px-3 py-1.5 text-xs bg-gray-100 hover:bg-gray-200 rounded-md">&#8592; Prev</button>
+            <span class="text-xs text-gray-500" id="gaps-page-label"></span>
+            <button onclick="gapsNext()" id="gaps-next"
+                class="px-3 py-1.5 text-xs bg-gray-100 hover:bg-gray-200 rounded-md">Next &#8594;</button>
+        </div>
+    </div>
+</div>

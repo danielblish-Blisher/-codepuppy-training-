@@ -1,0 +1,68 @@
+<!-- Header -->
+<header class="bg-[#0053e2] text-white shadow-lg">
+    <div class="max-w-7xl mx-auto px-4 py-4">
+        <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+            <div>
+                <h1 class="text-xl sm:text-2xl font-bold">📚 FM Trades Training Intelligence</h1>
+                <p class="text-blue-200 text-xs sm:text-sm mt-0.5">
+                    All-trades repeat work order analysis — identifying training gaps across Field Services
+                </p>
+            </div>
+            <div class="flex items-center gap-4">
+                <div class="text-right">
+                    <p class="text-xs text-blue-200">Data Refreshed</p>
+                    <p class="font-semibold text-sm" id="lastUpdated">__GENERATED__</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</header>
+
+<!-- Tab Nav -->
+<div class="bg-white border-b border-gray-200 shadow-sm sticky top-0 z-30">
+    <div class="max-w-7xl mx-auto px-4">
+        <nav class="flex space-x-1 sm:space-x-2 overflow-x-auto pb-0 -mb-px"
+             role="tablist" aria-label="Dashboard Tabs"
+             style="-webkit-overflow-scrolling:touch; scrollbar-width:thin">
+
+            <button onclick="switchTab('overview')" id="tab-overview"
+                class="tab-btn tab-active border-b-2 border-[#0053e2] text-[#0053e2]
+                       py-3 px-2 text-xs sm:text-sm font-medium whitespace-nowrap">
+                📋 Overview
+            </button>
+            <button onclick="switchTab('gaps')" id="tab-gaps"
+                class="tab-btn border-b-2 border-transparent text-gray-500 hover:text-gray-700
+                       py-3 px-2 text-xs sm:text-sm font-medium whitespace-nowrap">
+                🔍 Training Gaps
+            </button>
+            <button onclick="switchTab('trade')" id="tab-trade"
+                class="tab-btn border-b-2 border-transparent text-gray-500 hover:text-gray-700
+                       py-3 px-2 text-xs sm:text-sm font-medium whitespace-nowrap">
+                🛠️ By Trade
+            </button>
+            <button onclick="switchTab('store')" id="tab-store"
+                class="tab-btn border-b-2 border-transparent text-gray-500 hover:text-gray-700
+                       py-3 px-2 text-xs sm:text-sm font-medium whitespace-nowrap">
+                🏪 By Store
+            </button>
+            <button onclick="switchTab('trends')" id="tab-trends"
+                class="tab-btn border-b-2 border-transparent text-gray-500 hover:text-gray-700
+                       py-3 px-2 text-xs sm:text-sm font-medium whitespace-nowrap">
+                📈 Trends
+            </button>
+            <button onclick="switchTab('techout')" id="tab-techout"
+                class="tab-btn border-b-2 border-transparent text-gray-500 hover:text-gray-700
+                       py-3 px-2 text-xs sm:text-sm font-medium whitespace-nowrap">
+                👷 Tech Output
+            </button>
+            <button onclick="switchTab('metricpulse')" id="tab-metricpulse"
+                class="tab-btn border-b-2 border-transparent text-gray-500 hover:text-gray-700
+                       py-3 px-2 text-xs sm:text-sm font-medium whitespace-nowrap">
+                📊 Metric Pulse
+            </button>
+        </nav>
+    </div>
+</div>
+
+<!-- Main wrapper -->
+<main class="max-w-7xl mx-auto px-4 py-6">

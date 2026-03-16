@@ -1,0 +1,161 @@
+<script>
+// ── Overview Tab JS ────────────────────────────────────────────────────
+let _tradeChart, _problemChart, _trendOvChart;
+
+function renderOverview() {
+    _renderKpis();
+    _renderInsight();
+    _renderTradeChart();
+    _renderProblemChart();
+    _renderTrendOverview();
+    _renderTopStores();
+}
+
+function _renderKpis() {
+    const totalRepeats  = REPEATS_BY_TRADE.reduce((a, r) => a + num(r.total_repeats), 0);
+    const storesAff     = new Set(STORE_HOTSPOTS.map(s => s.store_nbr)).size;
+    const top90d        = REPEATS_BY_TRADE.reduce((a, r) => a + num(r.repeats_90d), 0);
+    const topTrade      = REPEATS_BY_TRADE[0]?.trade ?? 'N/A';
+
+    const cards = [
+        { label: 'Total Repeat WOs',   value: fmt(totalRepeats), sub: 'Last 12 months',     color: '#ea1100' },
+        { label: 'Repeats ≤90 Days',    value: fmt(top90d),       sub: 'High urgency',        color: '#995213' },
+        { label: 'Stores Affected',    value: fmt(storesAff),    sub: 'With repeat patterns', color: '#0053e2' },
+        { label: 'Highest-Gap Trade',  value: topTrade.replace('FM - ', ''), sub: 'Most repeat WOs', color: '#2a8703' },
+    ];
+    document.getElementById('kpi-row').innerHTML = cards.map(c => `
+        <div class="kpi-card bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+            <p class="text-xs text-gray-500 mb-1">${esc(c.label)}</p>
+            <p class="text-2xl font-bold" style="color:${c.color}">${esc(c.value)}</p>
+            <p class="text-xs text-gray-400 mt-1">${esc(c.sub)}</p>
+        </div>
+    `).join('');
+}
+
+function _renderInsight() {
+    const totalRepeats = REPEATS_BY_TRADE.reduce((a, r) => a + num(r.total_repeats), 0);
+    const top90d       = REPEATS_BY_TRADE.reduce((a, r) => a + num(r.repeats_90d), 0);
+    const topTrade     = REPEATS_BY_TRADE[0];
+    const topCode      = PROBLEM_CODES[0];
+    const pct90        = pct(top90d, totalRepeats);
+
+    document.getElementById('insight-banner').innerHTML = `
+        <h3 class="text-lg font-bold mb-2">💡 Key Insights</h3>
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
+            <div>
+                <p class="text-blue-200 text-xs mb-1">MOST CRITICAL WINDOW</p>
+                <p class="font-semibold">${pct90}% of all repeats happen within 90 days</p>
+                <p class="text-blue-200 text-xs">indicating skill/parts gaps, not random failures</p>
+            </div>
+            <div>
+                <p class="text-blue-200 text-xs mb-1">TOP TRADE TO TARGET</p>
+                <p class="font-semibold">${esc((topTrade?.trade ?? '').replace('FM - ', ''))}</p>
+                <p class="text-blue-200 text-xs">${fmt(topTrade?.total_repeats ?? 0)} repeats across ${fmt(topTrade?.stores_affected ?? 0)} stores</p>
+            </div>
+            <div>
+                <p class="text-blue-200 text-xs mb-1">TOP PROBLEM CODE</p>
+                <p class="font-semibold">${esc(topCode?.problem_code ?? 'N/A')}</p>
+                <p class="text-blue-200 text-xs">${fmt(topCode?.repeat_count ?? 0)} repeats in ${esc(topCode?.trade ?? '')}</p>
+            </div>
+        </div>
+    `;
+}
+
+function _renderTradeChart() {
+    if (_tradeChart) { _tradeChart.destroy(); _tradeChart = null; }
+    const top = REPEATS_BY_TRADE.slice(0, 10);
+    const labels = top.map(r => r.trade.replace('FM - ', '').replace('PM - ', '').replace('CF - ', ''));
+    const vals90  = top.map(r => num(r.repeats_90d));
+    const vals180 = top.map(r => num(r.repeats_180d) - num(r.repeats_90d));
+    const ctx = document.getElementById('tradeChart').getContext('2d');
+    _tradeChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels,
+            datasets: [
+                { label: '≤90 days (urgent)',    data: vals90,  backgroundColor: '#ea1100', borderRadius: 4 },
+                { label: '91-180 days',           data: vals180, backgroundColor: '#ffc220', borderRadius: 4 },
+            ]
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { position: 'bottom', labels: { font: { size: 11 } } }, datalabels: { display: false } },
+            scales: {
+                x: { stacked: true, ticks: { font: { size: 10 } } },
+                y: { stacked: true, beginAtZero: true }
+            }
+        }
+    });
+}
+
+function _renderProblemChart() {
+    if (_problemChart) { _problemChart.destroy(); _problemChart = null; }
+    const top = PROBLEM_CODES.slice(0, 10);
+    const labels = top.map(r => r.problem_code.length > 28 ? r.problem_code.slice(0,26)+'...' : r.problem_code);
+    const vals   = top.map(r => num(r.repeat_count));
+    const BLUES  = ['#0053e2','#1a63e8','#3373ee','#4d83f4','#6693fa','#003aa3','#1a4ab0','#3359bd','#4d69ca','#668dd7'];
+    const ctx = document.getElementById('problemChart').getContext('2d');
+    _problemChart = new Chart(ctx, {
+        type: 'bar',
+        data: { labels, datasets: [{ label: 'Repeat WOs', data: vals, backgroundColor: BLUES, borderRadius: 4 }] },
+        options: {
+            indexAxis: 'y',
+            responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { display: false }, datalabels: { display: false } },
+            scales: { x: { beginAtZero: true }, y: { ticks: { font: { size: 10 } } } }
+        }
+    });
+}
+
+function _renderTrendOverview() {
+    if (_trendOvChart) { _trendOvChart.destroy(); _trendOvChart = null; }
+    // Aggregate across all trades by month
+    const byMonth = {};
+    MONTHLY_TREND.forEach(r => {
+        byMonth[r.month] = (byMonth[r.month] || 0) + num(r.total_repeats);
+    });
+    const months = Object.keys(byMonth).sort();
+    const vals   = months.map(m => byMonth[m]);
+    const ctx = document.getElementById('trendOverviewChart').getContext('2d');
+    _trendOvChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: months,
+            datasets: [{
+                label: 'Total Repeat WOs',
+                data: vals,
+                borderColor: '#0053e2',
+                backgroundColor: 'rgba(0,83,226,0.1)',
+                fill: true,
+                tension: 0.4,
+                pointRadius: 4,
+                pointBackgroundColor: '#0053e2',
+            }]
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { display: false }, datalabels: { display: false } },
+            scales: { y: { beginAtZero: true } }
+        }
+    });
+}
+
+function _renderTopStores() {
+    const top = STORE_HOTSPOTS.slice(0, 10);
+    const tbody = document.getElementById('top-stores-body');
+    if (!tbody) return;
+    tbody.innerHTML = top.map((s, i) => {
+        const trades = Array.isArray(s.top_trades) ? s.top_trades : (s.top_trades || '').split(',');
+        const tradeBadges = trades.slice(0,3).map(t => `<span class="badge-blue px-1.5 py-0.5 rounded text-xs">${esc(t.replace('FM - ','').replace('PM - ','').trim())}</span>`).join(' ');
+        return `
+        <tr class="table-row border-b border-gray-50 ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}">
+            <td class="px-3 py-2 font-bold text-[#0053e2]">#${esc(s.store_nbr)}</td>
+            <td class="px-3 py-2 text-gray-700">${esc(s.city)}, ${esc(s.state)}</td>
+            <td class="px-3 py-2 text-gray-600 text-xs">${esc(s.fm_director || s.sr_director || '—')}</td>
+            <td class="px-3 py-2 text-right font-semibold text-red-600">${fmt(s.repeats_90d)}</td>
+            <td class="px-3 py-2 text-right text-gray-600">${s.trades_affected}</td>
+            <td class="px-3 py-2">${tradeBadges}</td>
+        </tr>`;
+    }).join('');
+}
+</script>

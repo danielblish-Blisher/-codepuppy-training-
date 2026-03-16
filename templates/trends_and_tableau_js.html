@@ -1,0 +1,165 @@
+<script>
+// ── Trends Tab JS ─────────────────────────────────────────────────
+let _trendsLine, _trendsStack;
+let _trendsBootstrapped = false;
+
+function renderTrends() {
+    if (!_trendsBootstrapped) _bootstrapTrends();
+    _renderTrendsLine();
+    _renderTrendsStack();
+    _renderTrendsTable();
+}
+
+function _bootstrapTrends() {
+    _trendsBootstrapped = true;
+    const trades = [...new Set(MONTHLY_TREND.map(r => r.trade).filter(Boolean))].sort();
+    const sel = document.getElementById('trends-trade-filter');
+    trades.forEach(t => {
+        const o = document.createElement('option'); o.value = t;
+        o.textContent = t.replace('FM - ','').replace('PM - ',''); sel.appendChild(o);
+    });
+}
+
+function _renderTrendsLine() {
+    if (_trendsLine) { _trendsLine.destroy(); _trendsLine = null; }
+    const filterTrade = document.getElementById('trends-trade-filter')?.value || '';
+    const data = filterTrade
+        ? MONTHLY_TREND.filter(r => r.trade === filterTrade)
+        : _aggregateByMonth();
+    const months = [...new Set(data.map(r => r.month))].sort();
+    const ctx = document.getElementById('trendsLineChart').getContext('2d');
+    _trendsLine = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: months,
+            datasets: [{
+                label: filterTrade ? filterTrade.replace('FM - ','') : 'All Trades',
+                data: months.map(m => {
+                    const rows = data.filter(r => r.month === m);
+                    return rows.reduce((a, r) => a + num(r.total_repeats), 0);
+                }),
+                borderColor: '#0053e2', backgroundColor: 'rgba(0,83,226,0.1)',
+                fill: true, tension: 0.4, pointRadius: 5, pointBackgroundColor: '#0053e2'
+            }]
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { display: false }, datalabels: { display: false } },
+            scales: { y: { beginAtZero: true } }
+        }
+    });
+}
+
+function _aggregateByMonth() {
+    const byMonth = {};
+    MONTHLY_TREND.forEach(r => {
+        if (!byMonth[r.month]) byMonth[r.month] = { month: r.month, total_repeats: 0 };
+        byMonth[r.month].total_repeats += num(r.total_repeats);
+    });
+    return Object.values(byMonth).sort((a,b) => a.month < b.month ? -1 : 1);
+}
+
+function _renderTrendsStack() {
+    if (_trendsStack) { _trendsStack.destroy(); _trendsStack = null; }
+    // Get top 5 trades by total
+    const byTrade = {};
+    MONTHLY_TREND.forEach(r => {
+        byTrade[r.trade] = (byTrade[r.trade] || 0) + num(r.total_repeats);
+    });
+    const top5 = Object.entries(byTrade).sort((a,b) => b[1]-a[1]).slice(0,5).map(e => e[0]);
+    const months = [...new Set(MONTHLY_TREND.map(r => r.month))].sort();
+    const COLORS = ['#0053e2','#ea1100','#ffc220','#2a8703','#995213'];
+    const datasets = top5.map((trade, i) => ({
+        label: trade.replace('FM - ','').replace('PM - ',''),
+        data: months.map(m => {
+            const r = MONTHLY_TREND.find(r => r.month === m && r.trade === trade);
+            return r ? num(r.total_repeats) : 0;
+        }),
+        backgroundColor: COLORS[i] + '99',
+        borderColor: COLORS[i],
+        fill: true, tension: 0.3
+    }));
+    const ctx = document.getElementById('trendsStackChart').getContext('2d');
+    _trendsStack = new Chart(ctx, {
+        type: 'line',
+        data: { labels: months, datasets },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { position: 'bottom', labels: { font: { size: 10 } } }, datalabels: { display: false } },
+            scales: { y: { stacked: true, beginAtZero: true } }
+        }
+    });
+}
+
+function _renderTrendsTable() {
+    const filterTrade = document.getElementById('trends-trade-filter')?.value || '';
+    const data = filterTrade
+        ? MONTHLY_TREND.filter(r => r.trade === filterTrade)
+        : MONTHLY_TREND;
+    const sorted = [...data].sort((a,b) => b.month < a.month ? -1 : 1);
+    const tbody = document.getElementById('trends-body');
+    if (!tbody) return;
+    tbody.innerHTML = sorted.slice(0, 200).map((r, i) => `
+        <tr class="table-row border-b border-gray-50 ${i%2===0?'bg-white':'bg-gray-50/40'}">
+            <td class="px-3 py-2 text-gray-600">${esc(r.month)}</td>
+            <td class="px-3 py-2">
+                <span class="badge-blue px-2 py-0.5 rounded text-xs">${esc(r.trade.replace('FM - ','').replace('PM - ',''))}</span>
+            </td>
+            <td class="px-3 py-2 text-right font-semibold text-[#0053e2]">${fmt(r.total_repeats)}</td>
+            <td class="px-3 py-2 text-right text-red-600">${fmt(r.within_90d)}</td>
+            <td class="px-3 py-2 text-right text-gray-600">${fmt(r.stores_affected)}</td>
+        </tr>`).join('');
+}
+
+// ── Tableau Tabs JS ───────────────────────────────────────────────
+let _techOutPage = 0, _pulseOutPage = 0;
+const TABLEAU_PAGE_SIZE = 100;
+let _techFiltered = [], _pulseFiltered = [];
+
+function _buildTableauTable(data, headId, bodyId, searchId, countId, pageLabel, prevBtn, nextBtn, page) {
+    if (!data.length) {
+        document.getElementById(headId).innerHTML = '';
+        document.getElementById(bodyId).innerHTML =
+            '<tr><td colspan="5" class="px-4 py-8 text-center text-gray-400">No Tableau data available — run fetch_tableau.py to populate.</td></tr>';
+        if (document.getElementById(countId)) document.getElementById(countId).textContent = '0 rows';
+        return [];
+    }
+    const q = (document.getElementById(searchId)?.value || '').toLowerCase();
+    const cols = Object.keys(data[0]);
+    const filtered = data.filter(row =>
+        !q || cols.some(c => (row[c] || '').toString().toLowerCase().includes(q))
+    );
+    if (document.getElementById(countId)) document.getElementById(countId).textContent = `${fmt(filtered.length)} rows`;
+    // Header
+    document.getElementById(headId).innerHTML = `
+        <tr class="bg-gray-50 text-gray-600 text-xs uppercase tracking-wide">
+            ${cols.map(c => `<th class="px-3 py-2 text-left whitespace-nowrap">${esc(c)}</th>`).join('')}
+        </tr>`;
+    // Body page
+    const start = page * TABLEAU_PAGE_SIZE;
+    const slice = filtered.slice(start, start + TABLEAU_PAGE_SIZE);
+    document.getElementById(bodyId).innerHTML = slice.map((row, i) =>
+        `<tr class="table-row border-b border-gray-50 ${i%2===0?'bg-white':'bg-gray-50/40'}">
+            ${cols.map(c => `<td class="px-3 py-2 text-xs text-gray-700 whitespace-nowrap">${esc(row[c] ?? '')}</td>`).join('')}
+        </tr>`
+    ).join('');
+    const total = filtered.length;
+    const end = Math.min(start + TABLEAU_PAGE_SIZE, total);
+    if (document.getElementById(pageLabel)) document.getElementById(pageLabel).textContent = total ? `Showing ${start+1}–${end} of ${fmt(total)}` : 'No results';
+    if (document.getElementById(prevBtn)) document.getElementById(prevBtn).disabled = page === 0;
+    if (document.getElementById(nextBtn)) document.getElementById(nextBtn).disabled = end >= total;
+    return filtered;
+}
+
+function renderTechOut() {
+    _techFiltered = _buildTableauTable(TECH_OUTPUT,'techout-head','techout-body','techout-search','techout-count','techout-page-label','techout-prev','techout-next',_techOutPage);
+}
+function techOutPrev() { if (_techOutPage > 0) { _techOutPage--; renderTechOut(); } }
+function techOutNext() { if ((_techOutPage+1)*TABLEAU_PAGE_SIZE < _techFiltered.length) { _techOutPage++; renderTechOut(); } }
+
+function renderMetricPulse() {
+    _pulseFiltered = _buildTableauTable(METRIC_PULSE,'pulse-head','pulse-body','pulse-search','pulse-count','pulse-page-label','pulse-prev','pulse-next',_pulseOutPage);
+}
+function pulsePrev() { if (_pulseOutPage > 0) { _pulseOutPage--; renderMetricPulse(); } }
+function pulseNext() { if ((_pulseOutPage+1)*TABLEAU_PAGE_SIZE < _pulseFiltered.length) { _pulseOutPage++; renderMetricPulse(); } }
+</script>

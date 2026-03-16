@@ -1,0 +1,55 @@
+<!-- Overview Tab -->
+<div id="overview-content" class="tab-content">
+
+    <!-- Hero KPI Cards -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6" id="kpi-row"></div>
+
+    <!-- Top-level insight banner -->
+    <div id="insight-banner" class="bg-gradient-to-r from-[#0053e2] to-[#003aa3] text-white rounded-xl p-5 mb-6"></div>
+
+    <!-- Charts row -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+        <!-- Repeats by Trade -->
+        <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+            <h3 class="font-bold text-gray-800 mb-4">Repeat WOs by Trade (Last 12 Months)</h3>
+            <div class="chart-wrap" style="height:280px">
+                <canvas id="tradeChart"></canvas>
+            </div>
+        </div>
+        <!-- Top Problem Codes -->
+        <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+            <h3 class="font-bold text-gray-800 mb-4">Top Training Gap Signals (Problem Codes)</h3>
+            <div class="chart-wrap" style="height:280px">
+                <canvas id="problemChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- Monthly Trend -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mb-6">
+        <h3 class="font-bold text-gray-800 mb-4">Monthly Repeat WO Trend — All Trades</h3>
+        <div class="chart-wrap" style="height:240px">
+            <canvas id="trendOverviewChart"></canvas>
+        </div>
+    </div>
+
+    <!-- Top 5 stores snapshot -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+        <h3 class="font-bold text-gray-800 mb-4">🔥 Top 10 Stores Needing Attention</h3>
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="bg-gray-50 text-gray-600 text-xs uppercase tracking-wide">
+                        <th class="px-3 py-2 text-left">Store</th>
+                        <th class="px-3 py-2 text-left">City, State</th>
+                        <th class="px-3 py-2 text-left">Director</th>
+                        <th class="px-3 py-2 text-right">Repeats (90d)</th>
+                        <th class="px-3 py-2 text-right">Trades</th>
+                        <th class="px-3 py-2 text-left">Top Trades</th>
+                    </tr>
+                </thead>
+                <tbody id="top-stores-body"></tbody>
+            </table>
+        </div>
+    </div>
+</div>

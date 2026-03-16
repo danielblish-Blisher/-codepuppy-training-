@@ -1,0 +1,64 @@
+<!-- By Store Tab -->
+<div id="store-content" class="tab-content hidden">
+    <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4 mb-5">
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div class="col-span-2">
+                <label class="block text-xs text-gray-500 mb-1">Search store / city / state / director</label>
+                <input type="text" id="store-search" placeholder="Type to search..."
+                    oninput="renderStore()" class="w-full">
+            </div>
+            <div>
+                <label class="block text-xs text-gray-500 mb-1">State</label>
+                <select id="store-state" onchange="renderStore()" class="w-full">
+                    <option value="">All States</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-xs text-gray-500 mb-1">Sort by</label>
+                <select id="store-sort" onchange="renderStore()" class="w-full">
+                    <option value="total_repeats">Total Repeats</option>
+                    <option value="repeats_90d">90-Day Repeats</option>
+                    <option value="trades_affected">Trades Affected</option>
+                </select>
+            </div>
+        </div>
+        <p class="text-xs text-gray-400 mt-2" id="store-count"></p>
+    </div>
+
+    <!-- Top bar chart -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mb-5">
+        <h3 class="font-bold text-gray-800 mb-4">Top 20 Stores by 90-Day Repeat WOs</h3>
+        <div class="chart-wrap" style="height:260px">
+            <canvas id="storeChart"></canvas>
+        </div>
+    </div>
+
+    <!-- Store detail table -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="bg-gray-50 text-gray-600 text-xs uppercase tracking-wide">
+                        <th class="px-3 py-3 text-left">Store</th>
+                        <th class="px-3 py-3 text-left">City, State</th>
+                        <th class="px-3 py-3 text-left">Banner</th>
+                        <th class="px-3 py-3 text-left">SR Director</th>
+                        <th class="px-3 py-3 text-left">FM Director</th>
+                        <th class="px-3 py-3 text-right">Total Repeats</th>
+                        <th class="px-3 py-3 text-right">Within 90d</th>
+                        <th class="px-3 py-3 text-right">Trades</th>
+                        <th class="px-3 py-3 text-left">Top Trades</th>
+                    </tr>
+                </thead>
+                <tbody id="store-body"></tbody>
+            </table>
+        </div>
+        <div class="px-4 py-3 border-t border-gray-100 flex items-center justify-between">
+            <button onclick="storePrev()" id="store-prev"
+                class="px-3 py-1.5 text-xs bg-gray-100 hover:bg-gray-200 rounded-md">&#8592; Prev</button>
+            <span class="text-xs text-gray-500" id="store-page-label"></span>
+            <button onclick="storeNext()" id="store-next"
+                class="px-3 py-1.5 text-xs bg-gray-100 hover:bg-gray-200 rounded-md">Next &#8594;</button>
+        </div>
+    </div>
+</div>

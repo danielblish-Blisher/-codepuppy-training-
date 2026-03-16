@@ -1,0 +1,27 @@
+</main>
+
+<!-- Footer -->
+<footer class="bg-white border-t border-gray-200 mt-8 py-6">
+    <div class="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-3">
+        <div class="text-xs text-gray-400">
+            <span class="font-semibold text-gray-600">FM Trades Training Intelligence</span>
+            &nbsp;&middot;&nbsp; Built with BigQuery + Tableau
+            &nbsp;&middot;&nbsp; Data: <span id="footerGenerated"></span>
+        </div>
+        <div class="text-xs text-gray-400">
+            Source: <code class="bg-gray-100 px-1 rounded">re-ods-explorer.us_re_fm_prod</code>
+        </div>
+    </div>
+</footer>
+
+<script>
+    // Set generated timestamp in footer
+    document.getElementById('footerGenerated').textContent = GENERATED;
+    // Init first tab on load
+    window.addEventListener('DOMContentLoaded', function() {
+        document.getElementById('lastUpdated').textContent = GENERATED;
+        renderOverview();
+    });
+</script>
+</body>
+</html>

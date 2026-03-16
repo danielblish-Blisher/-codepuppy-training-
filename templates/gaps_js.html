@@ -1,0 +1,151 @@
+<script>
+// ── Training Gaps Tab JS ───────────────────────────────────────────────
+let _gapsPage   = 0;
+const GAPS_PAGE_SIZE = 50;
+let _gapsSortKey = 'call_date';
+let _gapsSortDir = -1;
+let _gapsFiltered = [];
+let _gapsBootstrapped = false;
+
+function _bootstrapGaps() {
+    if (_gapsBootstrapped) return;
+    _gapsBootstrapped = true;
+
+    // Populate trade filter
+    const trades = [...new Set(REPEAT_DETAIL.map(r => r.trade).filter(Boolean))].sort();
+    const tSel = document.getElementById('gaps-trade');
+    trades.forEach(t => {
+        const o = document.createElement('option');
+        o.value = t; o.textContent = t.replace('FM - ','').replace('PM - ','');
+        tSel.appendChild(o);
+    });
+
+    // Populate state filter
+    const states = [...new Set(REPEAT_DETAIL.map(r => r.state).filter(Boolean))].sort();
+    const sSel = document.getElementById('gaps-state');
+    states.forEach(s => {
+        const o = document.createElement('option');
+        o.value = s; o.textContent = s;
+        sSel.appendChild(o);
+    });
+
+    // Populate director filter
+    const dirs = [...new Set(REPEAT_DETAIL.map(r => r.fm_director || r.sr_director).filter(Boolean))].sort();
+    const dSel = document.getElementById('gaps-director');
+    dirs.forEach(d => {
+        const o = document.createElement('option');
+        o.value = d; o.textContent = d;
+        dSel.appendChild(o);
+    });
+}
+
+function gapsClearFilters() {
+    document.getElementById('gaps-search').value = '';
+    document.getElementById('gaps-trade').value = '';
+    document.getElementById('gaps-state').value = '';
+    document.getElementById('gaps-director').value = '';
+    document.getElementById('gaps-urgency').value = '';
+    _gapsPage = 0;
+    renderGaps();
+}
+
+function gapsSort(key) {
+    if (_gapsSortKey === key) { _gapsSortDir *= -1; }
+    else { _gapsSortKey = key; _gapsSortDir = -1; }
+    _gapsPage = 0;
+    renderGaps();
+}
+
+function gapsPrev() { if (_gapsPage > 0) { _gapsPage--; _gapsRenderPage(); } }
+function gapsNext() {
+    if ((_gapsPage + 1) * GAPS_PAGE_SIZE < _gapsFiltered.length) {
+        _gapsPage++; _gapsRenderPage();
+    }
+}
+
+function renderGaps() {
+    _bootstrapGaps();
+    const q       = (document.getElementById('gaps-search')?.value  || '').toLowerCase();
+    const trade   = document.getElementById('gaps-trade')?.value    || '';
+    const state   = document.getElementById('gaps-state')?.value    || '';
+    const dir     = document.getElementById('gaps-director')?.value || '';
+    const urgency = parseInt(document.getElementById('gaps-urgency')?.value || '0');
+
+    _gapsFiltered = REPEAT_DETAIL.filter(r => {
+        if (trade && r.trade !== trade) return false;
+        if (state && r.state !== state) return false;
+        if (dir && r.fm_director !== dir && r.sr_director !== dir) return false;
+        if (urgency && num(r.days_between) > urgency) return false;
+        if (q) {
+            const hay = [
+                r.store_nbr, r.city, r.state, r.trade,
+                r.problem_code, r.asset_tag, r.tech_name,
+                r.provider, r.fm_director
+            ].join(' ').toLowerCase();
+            if (!hay.includes(q)) return false;
+        }
+        return true;
+    });
+
+    // Sort
+    _gapsFiltered.sort((a, b) => {
+        let av = a[_gapsSortKey] ?? '', bv = b[_gapsSortKey] ?? '';
+        if (_gapsSortKey === 'days_between') { av = num(av); bv = num(bv); }
+        if (av < bv) return -1 * _gapsSortDir;
+        if (av > bv) return  1 * _gapsSortDir;
+        return 0;
+    });
+
+    document.getElementById('gaps-count').textContent =
+        `${fmt(_gapsFiltered.length)} repeat WOs found`;
+    _gapsPage = 0;
+    _gapsRenderPage();
+}
+
+function _gapsRenderPage() {
+    const start = _gapsPage * GAPS_PAGE_SIZE;
+    const slice = _gapsFiltered.slice(start, start + GAPS_PAGE_SIZE);
+    const tbody = document.getElementById('gaps-body');
+    if (!tbody) return;
+
+    tbody.innerHTML = slice.map((r, i) => {
+        const prevWo = r.prev_tracking_nbr
+            ? `<a href="${SC_WO_URL}${r.prev_tracking_nbr}" target="_blank"
+                  class="text-[#0053e2] hover:underline">#${r.prev_tracking_nbr}</a>
+               <span class="text-gray-400 text-xs block">${r.prev_call_date?.slice(0,10) || ''}</span>
+               <span class="text-gray-500 text-xs">${esc(r.prev_problem_code || '')}</span>`
+            : '<span class="text-gray-400">-</span>';
+
+        const tradeBadge = `<span class="badge-blue px-2 py-0.5 rounded text-xs">
+            ${esc((r.trade||'').replace('FM - ','').replace('PM - ',''))}</span>`;
+
+        return `
+        <tr class="table-row border-b border-gray-50 ${i % 2 === 0 ? '' : 'bg-gray-50/40'}">
+            <td class="px-3 py-2 text-xs text-gray-500">${r.call_date?.slice(0,10) || ''}</td>
+            <td class="px-3 py-2 font-bold text-[#0053e2]">
+                <a href="${SC_WO_URL}${r.tracking_nbr}" target="_blank"
+                   class="hover:underline">#${esc(r.store_nbr)}</a>
+            </td>
+            <td class="px-3 py-2 text-xs text-gray-600">${esc(r.city)}, ${esc(r.state)}</td>
+            <td class="px-3 py-2">${tradeBadge}</td>
+            <td class="px-3 py-2 text-xs font-medium text-gray-800">${esc(r.problem_code)}</td>
+            <td class="px-3 py-2 text-xs text-gray-500">${esc(r.asset_tag)}</td>
+            <td class="px-3 py-2 text-center">${urgencyBadge(r.days_between)}</td>
+            <td class="px-3 py-2 text-xs">${prevWo}</td>
+            <td class="px-3 py-2 text-xs text-gray-600">${esc(r.tech_name || r.provider || '—')}</td>
+            <td class="px-3 py-2 text-xs text-gray-500">${esc(r.fm_director || r.sr_director || '—')}</td>
+            <td class="px-3 py-2 text-center">
+                <a href="${SC_WO_URL}${r.tracking_nbr}" target="_blank"
+                   class="text-xs bg-[#0053e2] text-white px-2 py-1 rounded hover:bg-[#003aa3]">SC</a>
+            </td>
+        </tr>`;
+    }).join('');
+
+    const total  = _gapsFiltered.length;
+    const end    = Math.min(start + GAPS_PAGE_SIZE, total);
+    document.getElementById('gaps-page-label').textContent =
+        total ? `Showing ${start + 1}–${end} of ${fmt(total)}` : 'No results';
+    document.getElementById('gaps-prev').disabled = _gapsPage === 0;
+    document.getElementById('gaps-next').disabled = end >= total;
+}
+</script>

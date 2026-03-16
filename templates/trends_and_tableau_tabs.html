@@ -1,0 +1,97 @@
+<!-- Trends Tab -->
+<div id="trends-content" class="tab-content hidden">
+
+    <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mb-6">
+        <div class="flex items-center justify-between mb-4">
+            <h3 class="font-bold text-gray-800">Monthly Repeat WOs by Trade</h3>
+            <select id="trends-trade-filter" onchange="renderTrends()" class="text-sm">
+                <option value="">All Trades</option>
+            </select>
+        </div>
+        <div class="chart-wrap" style="height:300px">
+            <canvas id="trendsLineChart"></canvas>
+        </div>
+    </div>
+
+    <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mb-6">
+        <h3 class="font-bold text-gray-800 mb-4">Stacked Area — Top 5 Trades Over Time</h3>
+        <div class="chart-wrap" style="height:280px">
+            <canvas id="trendsStackChart"></canvas>
+        </div>
+    </div>
+
+    <!-- Monthly breakdown table -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+        <h3 class="font-bold text-gray-800 mb-4">Monthly Breakdown Table</h3>
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="bg-gray-50 text-gray-600 text-xs uppercase tracking-wide">
+                        <th class="px-3 py-2 text-left">Month</th>
+                        <th class="px-3 py-2 text-left">Trade</th>
+                        <th class="px-3 py-2 text-right">Total Repeats</th>
+                        <th class="px-3 py-2 text-right">Within 90d</th>
+                        <th class="px-3 py-2 text-right">Stores</th>
+                    </tr>
+                </thead>
+                <tbody id="trends-body"></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Tech Output Tab -->
+<div id="techout-content" class="tab-content hidden">
+    <div class="bg-gradient-to-r from-[#0053e2] to-[#003aa3] text-white rounded-xl p-5 mb-5">
+        <h2 class="text-xl font-bold mb-1">👷 Tech Output</h2>
+        <p class="text-blue-100 text-sm">Sourced from Tableau: TechOutput view. Shows technician productivity and output metrics.</p>
+    </div>
+    <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4 mb-5">
+        <input type="text" id="techout-search" placeholder="Search tech, provider, trade..."
+            oninput="renderTechOut()" class="w-full max-w-sm">
+        <p class="text-xs text-gray-400 mt-2" id="techout-count"></p>
+    </div>
+    <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm" id="techout-table">
+                <thead id="techout-head"></thead>
+                <tbody id="techout-body"></tbody>
+            </table>
+        </div>
+        <div class="px-4 py-3 border-t border-gray-100 flex items-center justify-between">
+            <button onclick="techOutPrev()" id="techout-prev"
+                class="px-3 py-1.5 text-xs bg-gray-100 hover:bg-gray-200 rounded-md">&#8592; Prev</button>
+            <span class="text-xs text-gray-500" id="techout-page-label"></span>
+            <button onclick="techOutNext()" id="techout-next"
+                class="px-3 py-1.5 text-xs bg-gray-100 hover:bg-gray-200 rounded-md">Next &#8594;</button>
+        </div>
+    </div>
+</div>
+
+<!-- Metric Pulse Tab -->
+<div id="metricpulse-content" class="tab-content hidden">
+    <div class="bg-gradient-to-r from-[#0053e2] to-[#003aa3] text-white rounded-xl p-5 mb-5">
+        <h2 class="text-xl font-bold mb-1">📊 Metric Pulse</h2>
+        <p class="text-blue-100 text-sm">Sourced from Tableau: MetricPulse view. KPI tracking and performance pulse metrics.</p>
+    </div>
+    <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4 mb-5">
+        <input type="text" id="pulse-search" placeholder="Search metrics..."
+            oninput="renderMetricPulse()" class="w-full max-w-sm">
+        <p class="text-xs text-gray-400 mt-2" id="pulse-count"></p>
+    </div>
+    <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead id="pulse-head"></thead>
+                <tbody id="pulse-body"></tbody>
+            </table>
+        </div>
+        <div class="px-4 py-3 border-t border-gray-100 flex items-center justify-between">
+            <button onclick="pulsePrev()" id="pulse-prev"
+                class="px-3 py-1.5 text-xs bg-gray-100 hover:bg-gray-200 rounded-md">&#8592; Prev</button>
+            <span class="text-xs text-gray-500" id="pulse-page-label"></span>
+            <button onclick="pulseNext()" id="pulse-next"
+                class="px-3 py-1.5 text-xs bg-gray-100 hover:bg-gray-200 rounded-md">Next &#8594;</button>
+        </div>
+    </div>
+</div>

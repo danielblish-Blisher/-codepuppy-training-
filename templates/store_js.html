@@ -1,0 +1,96 @@
+<script>
+// ── By Store Tab JS ──────────────────────────────────────────────────
+let _storeChart;
+let _storeBootstrapped = false;
+let _storePage = 0;
+const STORE_PAGE_SIZE = 50;
+let _storeFiltered = [];
+
+function storePrev() { if (_storePage > 0) { _storePage--; _storeRenderPage(); } }
+function storeNext() {
+    if ((_storePage + 1) * STORE_PAGE_SIZE < _storeFiltered.length) {
+        _storePage++; _storeRenderPage();
+    }
+}
+
+function _bootstrapStore() {
+    _storeBootstrapped = true;
+    const states = [...new Set(STORE_HOTSPOTS.map(s => s.state).filter(Boolean))].sort();
+    const sel = document.getElementById('store-state');
+    states.forEach(st => {
+        const o = document.createElement('option'); o.value = st; o.textContent = st; sel.appendChild(o);
+    });
+}
+
+function renderStore() {
+    if (!_storeBootstrapped) _bootstrapStore();
+    const q     = (document.getElementById('store-search')?.value || '').toLowerCase();
+    const state = document.getElementById('store-state')?.value || '';
+    const sortK = document.getElementById('store-sort')?.value || 'total_repeats';
+
+    _storeFiltered = STORE_HOTSPOTS.filter(s => {
+        if (state && s.state !== state) return false;
+        if (q) {
+            const hay = [s.store_nbr, s.city, s.state, s.fm_director, s.sr_director, s.banner].join(' ').toLowerCase();
+            if (!hay.includes(q)) return false;
+        }
+        return true;
+    }).sort((a, b) => num(b[sortK]) - num(a[sortK]));
+
+    document.getElementById('store-count').textContent = `${fmt(_storeFiltered.length)} stores found`;
+    _renderStoreChart();
+    _storePage = 0;
+    _storeRenderPage();
+}
+
+function _renderStoreChart() {
+    if (_storeChart) { _storeChart.destroy(); _storeChart = null; }
+    const top = _storeFiltered.slice(0, 20);
+    const ctx = document.getElementById('storeChart').getContext('2d');
+    _storeChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: top.map(s => '#' + s.store_nbr + ' ' + (s.city || '')),
+            datasets: [{ label: 'Repeats within 90d', data: top.map(s => num(s.repeats_90d)), backgroundColor: '#ea1100', borderRadius: 4 }]
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { display: false }, datalabels: { display: false } },
+            scales: { x: { ticks: { font: { size: 9 } } }, y: { beginAtZero: true } }
+        }
+    });
+}
+
+function _storeRenderPage() {
+    const start = _storePage * STORE_PAGE_SIZE;
+    const slice = _storeFiltered.slice(start, start + STORE_PAGE_SIZE);
+    const tbody = document.getElementById('store-body');
+    if (!tbody) return;
+    tbody.innerHTML = slice.map((s, i) => {
+        const trades = Array.isArray(s.top_trades) ? s.top_trades : (s.top_trades || '').split(',');
+        const badges = trades.filter(Boolean).slice(0,3)
+            .map(t => `<span class="badge-blue px-1.5 py-0.5 rounded text-xs">${esc(t.replace('FM - ','').replace('PM - ','').trim())}</span>`)
+            .join(' ');
+        const urgCls = num(s.repeats_90d) > 20 ? 'text-red-600 font-bold' :
+                       num(s.repeats_90d) > 10 ? 'text-amber-600 font-semibold' : 'text-gray-700';
+        return `
+        <tr class="table-row border-b border-gray-50 ${i%2===0?'bg-white':'bg-gray-50/40'}">
+            <td class="px-3 py-2 font-bold text-[#0053e2]">#${esc(s.store_nbr)}</td>
+            <td class="px-3 py-2 text-gray-700">${esc(s.city)}, ${esc(s.state)}</td>
+            <td class="px-3 py-2 text-xs text-gray-500">${esc(s.banner || '—')}</td>
+            <td class="px-3 py-2 text-xs text-gray-500">${esc(s.sr_director || '—')}</td>
+            <td class="px-3 py-2 text-xs text-gray-600">${esc(s.fm_director || '—')}</td>
+            <td class="px-3 py-2 text-right font-semibold text-[#0053e2]">${fmt(s.total_repeats)}</td>
+            <td class="px-3 py-2 text-right ${urgCls}">${fmt(s.repeats_90d)}</td>
+            <td class="px-3 py-2 text-right text-gray-600">${s.trades_affected}</td>
+            <td class="px-3 py-2">${badges}</td>
+        </tr>`;
+    }).join('');
+    const total = _storeFiltered.length;
+    const end   = Math.min(start + STORE_PAGE_SIZE, total);
+    document.getElementById('store-page-label').textContent =
+        total ? `Showing ${start+1}–${end} of ${fmt(total)}` : 'No results';
+    document.getElementById('store-prev').disabled = _storePage === 0;
+    document.getElementById('store-next').disabled = end >= total;
+}
+</script>

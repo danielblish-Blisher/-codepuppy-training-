@@ -1,0 +1,66 @@
+<!-- By Trade Tab -->
+<div id="trade-content" class="tab-content hidden">
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+        <!-- Trade bar chart -->
+        <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+            <h3 class="font-bold text-gray-800 mb-4">Repeat WOs by Trade</h3>
+            <div class="chart-wrap" style="height:320px">
+                <canvas id="tradeFull"></canvas>
+            </div>
+        </div>
+        <!-- 90d vs 180d donut -->
+        <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+            <h3 class="font-bold text-gray-800 mb-4">90-Day Urgency Split by Trade</h3>
+            <div class="chart-wrap" style="height:320px">
+                <canvas id="tradeDonut"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- Top problem codes per trade -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mb-6">
+        <div class="flex items-center justify-between mb-4">
+            <h3 class="font-bold text-gray-800">Top Problem Codes by Trade</h3>
+            <select id="trade-selector" onchange="renderTrade()" class="text-sm">
+                <option value="">All Trades</option>
+            </select>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="bg-gray-50 text-gray-600 text-xs uppercase tracking-wide">
+                        <th class="px-3 py-2 text-left">Trade</th>
+                        <th class="px-3 py-2 text-left">Problem Code</th>
+                        <th class="px-3 py-2 text-right">Repeats</th>
+                        <th class="px-3 py-2 text-right">Stores</th>
+                        <th class="px-3 py-2 text-right">Within 90d</th>
+                        <th class="px-3 py-2 text-left">Training Priority</th>
+                    </tr>
+                </thead>
+                <tbody id="trade-codes-body"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Trade summary table -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+        <h3 class="font-bold text-gray-800 mb-4">Trade Summary</h3>
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="bg-gray-50 text-gray-600 text-xs uppercase tracking-wide">
+                        <th class="px-3 py-2 text-left">Trade</th>
+                        <th class="px-3 py-2 text-right">Total Repeats</th>
+                        <th class="px-3 py-2 text-right">Stores</th>
+                        <th class="px-3 py-2 text-right">Assets</th>
+                        <th class="px-3 py-2 text-right">≤90d</th>
+                        <th class="px-3 py-2 text-right">≤180d</th>
+                        <th class="px-3 py-2 text-right">≤365d</th>
+                        <th class="px-3 py-2 text-left">Gap Score</th>
+                    </tr>
+                </thead>
+                <tbody id="trade-summary-body"></tbody>
+            </table>
+        </div>
+    </div>
+</div>
