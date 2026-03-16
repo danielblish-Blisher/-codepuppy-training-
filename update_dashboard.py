@@ -68,6 +68,7 @@ def main() -> int:
     if not args.build_only:
         if not args.skip_bq:
             results.append(run_step("BQ Data Fetch", "fetch_data.py", timeout=600))
+            results.append(run_step("Repeat WO Fetch", "fetch_repeat.py", timeout=300))
         if not args.skip_tableau:
             results.append(run_step("Tableau Fetch", "fetch_tableau.py", timeout=120))
 

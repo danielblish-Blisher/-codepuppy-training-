@@ -1,0 +1,454 @@
+<script>
+// ── Store Slicer ───────────────────────────────────────────────────────────────
+window._repeatActiveStore = null;
+
+function repeatSliceStore(storeNum, noScroll) {
+    const slicer = document.getElementById('repeat-store-slicer');
+    if (!slicer) return;
+
+    // Toggle off if clicking the same store again or explicitly clearing
+    if (window._repeatActiveStore === storeNum || storeNum === null) {
+        const wasActive = window._repeatActiveStore;
+        window._repeatActiveStore = null;
+        slicer.classList.add('hidden');
+        if (wasActive) _repeatUpdateRowHighlight(wasActive, false);
+        return;
+    }
+
+    const prevStore = window._repeatActiveStore;
+    window._repeatActiveStore = storeNum;
+
+    // Get all detail rows for this store (from the currently filtered set)
+    const pairs = repeatWOData.detail.filter(w => {
+        if (w.sn !== storeNum) return false;
+        if (repeatFilters.sr   && w.sr   !== repeatFilters.sr)   return false;
+        if (repeatFilters.dir  && w.dir  !== repeatFilters.dir)  return false;
+        if (repeatFilters.rm   && w.rm   !== repeatFilters.rm)   return false;
+        if (repeatFilters.fsm  && w.fsm  !== repeatFilters.fsm)  return false;
+        if (repeatFilters.prob && w.prob !== repeatFilters.prob)  return false;
+        return true;
+    }).sort((a, b) => b.r30 - a.r30);
+
+    // Mini KPIs
+    const totalR30 = pairs.reduce((s, w) => s + (w.r30 || 0), 0);
+    const totalNte = pairs.reduce((s, w) => s + (w.nte || 0), 0);
+    const fmtNte = v => v >= 1000 ? '$' + (v / 1000).toFixed(1) + 'k' : '$' + Math.round(v).toLocaleString();
+
+    document.getElementById('repeat-slicer-title').textContent = 'Store #' + storeNum + ' — Repeat Work Orders';
+    const firstPair = pairs[0] || {};
+    const meta = [firstPair.dir, firstPair.rm].filter(Boolean).join(' · ');
+    document.getElementById('repeat-slicer-sub').textContent = meta || 'Repeat issue detail';
+    document.getElementById('repeat-slicer-pairs').textContent = pairs.length;
+    document.getElementById('repeat-slicer-r30').textContent = totalR30;
+    document.getElementById('repeat-slicer-nte').textContent = fmtNte(totalNte);
+
+    // Build rows
+    const tbody = document.getElementById('repeat-slicer-body');
+    if (!pairs.length) {
+        tbody.innerHTML = '<tr><td colspan="8" class="px-4 py-6 text-center text-gray-500">No repeat work orders found for this store.</td></tr>';
+    } else {
+        tbody.innerHTML = pairs.map((w, i) => {
+            const r30Color = w.r30 >= 3 ? 'bg-red-100 text-red-700 font-bold' : w.r30 >= 2 ? 'bg-yellow-100 text-yellow-700 font-semibold' : 'bg-green-100 text-green-700';
+            const rowBg = i % 2 ? 'bg-gray-50' : 'bg-white';
+            const avgNteStr = w.avgnte ? '$' + Math.round(w.avgnte).toLocaleString() : '--';
+            const totalNteStr = w.nte ? fmtNte(w.nte) : '--';
+            const pcdDisplay = w.pcd && w.pcd !== w.prob
+                ? `<span class="inline-block px-2 py-0.5 rounded-full text-[11px] bg-purple-50 text-purple-700 border border-purple-200 font-medium whitespace-nowrap" title="${w.pcd}">${w.pcd.length > 24 ? w.pcd.slice(0, 22) + '\u2026' : w.pcd}</span>`
+                : '<span class="text-gray-400 text-xs">—</span>';
+            const tnumsHtml = w.tnums
+                ? w.tnums.split(',').filter(Boolean).map(t => {
+                    const tnum = t.trim();
+                    return `<a href="${SC_WO_URL}${tnum}" target="_blank" rel="noopener"
+                        class="inline-block font-mono text-[11px] px-1.5 py-0.5 rounded bg-blue-50 text-[#0053e2] hover:bg-[#0053e2] hover:text-white border border-blue-200 transition whitespace-nowrap"
+                        title="Open WO ${tnum} in ServiceChannel">${tnum}</a>`;
+                  }).join(' ')
+                : '<span class="text-gray-400 text-xs">--</span>';
+            const uid = 'sl' + i;
+            const assetHtml = _repeatAssetHtml(w);
+            const descHtml  = _repeatDescHtml(w, uid);
+            return `<tr class="${rowBg} hover:bg-blue-50 transition align-top">
+                <td class="px-4 py-2.5 font-medium text-gray-800">
+                    ${w.prob || '--'}<br>${pcdDisplay}
+                </td>
+                <td class="px-4 py-2.5 max-w-[200px]">
+                    ${assetHtml}
+                    ${descHtml}
+                </td>
+                <td class="px-4 py-2.5 text-gray-600 text-xs whitespace-nowrap">${w.trade || '--'}</td>
+                <td class="px-4 py-2.5 text-center text-gray-700 font-semibold">${w.cnt || 0}</td>
+                <td class="px-4 py-2.5 text-center"><span class="px-2 py-0.5 rounded-full text-xs ${r30Color}">${w.r30 || 0}</span></td>
+                <td class="px-4 py-2.5 text-gray-500 text-xs whitespace-nowrap">${w.fc ? w.fc.slice(0,10) : '--'}</td>
+                <td class="px-4 py-2.5 text-gray-500 text-xs whitespace-nowrap">${w.lc ? w.lc.slice(0,10) : '--'}</td>
+                <td class="px-4 py-2.5 text-right text-gray-600 text-xs whitespace-nowrap">${avgNteStr}</td>
+                <td class="px-4 py-2.5 text-right font-semibold text-gray-800 whitespace-nowrap">${totalNteStr}</td>
+                <td class="px-4 py-2.5"><div class="flex flex-wrap gap-1">${tnumsHtml}</div></td>
+            </tr>`;
+        }).join('');
+    }
+
+    slicer.classList.remove('hidden');
+
+    // Update row highlights directly in the DOM — no renderRepeatTables() call
+    // (avoids the toggle-off loop where _repeatActiveStore===storeNum fires on re-entry)
+    if (prevStore) _repeatUpdateRowHighlight(prevStore, false);
+    _repeatUpdateRowHighlight(storeNum, true);
+
+    slicer.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+/** Flip a store row’s highlight + chevron in-place without re-rendering the table. */
+function _repeatUpdateRowHighlight(storeNum, active) {
+    const row = document.getElementById('repeat-store-row-' + storeNum);
+    if (!row) return;
+    const firstCell = row.querySelector('td:first-child');
+    if (active) {
+        row.className = 'bg-blue-100 border-l-4 border-[#0053e2] cursor-pointer';
+        if (firstCell) firstCell.innerHTML = firstCell.innerHTML.replace('&#x25B6;', '&#x25BC;');
+    } else {
+        row.className = 'hover:bg-blue-50 cursor-pointer transition border-l-4 border-transparent';
+        if (firstCell) firstCell.innerHTML = firstCell.innerHTML.replace('&#x25BC;', '&#x25B6;');
+    }
+}
+// ───────────────────────────────────────────────────────────────────
+
+function switchRepeatView(view) {
+    console.log('🔀 switchRepeatView called with:', view);
+    repeatCurrentView = view;
+    console.log('repeatCurrentView set to:', repeatCurrentView);
+    
+    // Close the store slicer whenever the user changes views
+    window._repeatActiveStore = null;
+    const slicer = document.getElementById('repeat-store-slicer');
+    if (slicer) slicer.classList.add('hidden');
+
+    // Hide all view content
+    document.querySelectorAll('.repeat-view-content').forEach(v => {
+        console.log('Hiding:', v.id);
+        v.classList.add('hidden');
+    });
+    
+    // Show the target view
+    const targetDiv = document.getElementById(`repeat-${view}`);
+    console.log(`Looking for repeat-${view}:`, !!targetDiv);
+    if (targetDiv) {
+        console.log(`Before: repeat-${view} has classes:`, targetDiv.className);
+        targetDiv.classList.remove('hidden');
+        console.log(`After: repeat-${view} has classes:`, targetDiv.className);
+    } else {
+        console.error(`❌ Could not find repeat-${view}`);
+    }
+    document.querySelectorAll('[id^="repeat-view-"]').forEach(b => b.classList.remove('border-blue-500', 'text-blue-600'));
+    document.querySelectorAll('[id^="repeat-view-"]').forEach(b => b.classList.add('border-transparent', 'text-gray-600'));
+    const btnId = `repeat-view-${view.replace(/^by-/, '')}`;
+    console.log(`Setting button ${btnId} to active`);
+    const btn = document.getElementById(btnId);
+    if (btn) btn.classList.add('border-blue-500', 'text-blue-600');
+    renderRepeatTables();
+}
+
+function repeatSort(field) {
+    repeatCurrentSort.direction = repeatCurrentSort.field === field && repeatCurrentSort.direction === 'desc' ? 'asc' : 'desc';
+    repeatCurrentSort.field = field;
+    renderRepeatTables();
+}
+
+function renderRepeatTables() {
+    // Safety check: make sure data is loaded
+    if (!repeatWOData || !repeatWOData.byProblem) {
+        console.warn('Repeat WO data not ready');
+        return;
+    }
+
+    // ── Gate: require at least one org/name filter before rendering ──────────
+    const anyOrgFilter = repeatFilters.sr || repeatFilters.dir || repeatFilters.rm || repeatFilters.fsm;
+    const prompt = document.getElementById('repeat-select-prompt');
+    const allViewIds = ['repeat-by-problem', 'repeat-by-store', 'repeat-by-director', 'repeat-detail'];
+    if (!anyOrgFilter) {
+        if (prompt) prompt.classList.remove('hidden');
+        allViewIds.forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.classList.add('hidden');
+        });
+        // Zero out the KPI metrics so they don't show stale totals
+        ['repeat-total-wos','repeat-count','repeat-ftfr','repeat-store-count'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.textContent = '--';
+        });
+        return;
+    }
+    if (prompt) prompt.classList.add('hidden');
+    // Ensure the active view is visible
+    const activeViewEl = document.getElementById('repeat-' + repeatCurrentView);
+    if (activeViewEl) activeViewEl.classList.remove('hidden');
+    // ────────────────────────────────────────────────────────────────────
+
+    let filtered = { byProblem: [], byStore: [], byDirector: [], detail: [] };
+    
+    console.log('renderRepeatTables: repeatWOData.detail has', repeatWOData.detail ? repeatWOData.detail.length : 'undefined', 'items');
+    
+    // First filter detail list by all org hierarchy and other filters
+    filtered.detail = repeatWOData.detail.filter(w => {
+        if (repeatFilters.sr   && w.sr   !== repeatFilters.sr)   return false;
+        if (repeatFilters.dir  && w.dir  !== repeatFilters.dir)  return false;
+        if (repeatFilters.rm   && w.rm   !== repeatFilters.rm)   return false;
+        if (repeatFilters.fsm  && w.fsm  !== repeatFilters.fsm)  return false;
+        if (repeatFilters.prob && w.prob !== repeatFilters.prob)  return false;
+        return true;
+    });
+    
+    console.log('After filtering: filtered.detail has', filtered.detail.length, 'items');
+
+    // Show/hide empty-state notice
+    const emptyNotice = document.getElementById('repeat-empty-notice');
+    const anyFilterActive = repeatFilters.sr || repeatFilters.dir || repeatFilters.rm ||
+        repeatFilters.fsm || repeatFilters.prob || repeatFilters.status || repeatFilters.priority;
+    if (emptyNotice) {
+        if (filtered.detail.length === 0 && anyFilterActive) {
+            emptyNotice.classList.remove('hidden');
+            const activeFilters = [
+                repeatFilters.sr  && ('Sr Director: ' + repeatFilters.sr),
+                repeatFilters.dir && ('Director: '    + repeatFilters.dir),
+                repeatFilters.rm  && ('RM: '          + repeatFilters.rm),
+            ].filter(Boolean);
+            const titleEl = document.getElementById('repeat-empty-title');
+            const subEl   = document.getElementById('repeat-empty-sub');
+            if (titleEl) titleEl.textContent = 'No repeat work orders found' +
+                (activeFilters.length ? ' — ' + activeFilters.join(', ') : '');
+            if (subEl) subEl.textContent = 'This territory has no completed repeat FM work orders ' +
+                'in the last 12 months. Try “All Senior Directors” or adjust other filters.';
+        } else {
+            emptyNotice.classList.add('hidden');
+        }
+    }
+    
+    // Now build byStore and byDirector from the FILTERED detail list
+    const filteredStoreProblems = {};
+    filtered.detail.forEach(w => {
+        const key = `${w.sn}|${w.prob}`;
+        if (!filteredStoreProblems[key]) {
+            filteredStoreProblems[key] = { 
+                store: w.sn, 
+                sr: w.sr,
+                dir: w.dir, 
+                rm: w.rm, 
+                fsm: w.fsm,
+                problem: w.prob, 
+                count: 0, 
+                wos: [] 
+            };
+        }
+        filteredStoreProblems[key].count++;
+        filteredStoreProblems[key].wos.push(w);
+    });
+    
+    const filteredStoreByNumber = {};
+    Object.values(filteredStoreProblems).forEach(item => {
+        if (!filteredStoreByNumber[item.store]) {
+            filteredStoreByNumber[item.store] = {
+                store: item.store,
+                sr: item.sr,
+                dir: item.dir,
+                rm: item.rm,
+                fsm: item.fsm,
+                issues: 0,
+                problems: new Set()
+            };
+        }
+        filteredStoreByNumber[item.store].issues += item.count;
+        filteredStoreByNumber[item.store].problems.add(item.problem);
+    });
+    
+    filtered.byStore = Object.values(filteredStoreByNumber).map(s => ({
+        ...s,
+        problems: Array.from(s.problems).join(', ')
+    })).sort((a, b) => b.issues - a.issues);
+    
+    console.log('After building: filtered.byStore has', filtered.byStore.length, 'stores');
+    
+    const filteredDirectorMap = {};
+    filtered.detail.forEach(w => {
+        const dir = w.dir || 'Unassigned';
+        if (!filteredDirectorMap[dir]) {
+            filteredDirectorMap[dir] = {
+                director: dir,
+                stores: new Set(),
+                repeats: 0,
+                problems: {}
+            };
+        }
+        filteredDirectorMap[dir].stores.add(w.sn);
+        filteredDirectorMap[dir].repeats++;
+        filteredDirectorMap[dir].problems[w.prob] = (filteredDirectorMap[dir].problems[w.prob] || 0) + 1;
+    });
+    
+    filtered.byDirector = Object.values(filteredDirectorMap).map(d => {
+        const topProblem = Object.entries(d.problems).sort((a, b) => b[1] - a[1])[0];
+        return {
+            ...d,
+            storeCount: d.stores.size,
+            topProblem: topProblem ? topProblem[0] : 'N/A'
+        };
+    }).sort((a, b) => b.repeats - a.repeats);
+    
+    console.log('After building: filtered.byDirector has', filtered.byDirector.length, 'directors');
+    
+    // Filter byProblem based on what's in the filtered detail
+    const filteredProblems = new Set(filtered.detail.map(w => w.prob));
+    filtered.byProblem = repeatWOData.byProblem.filter(p => filteredProblems.has(p.problem));
+
+    // ── Update KPI metric cards with FILTERED counts ──────────────────────────
+    const _fTotalPairs  = filtered.detail.length;
+    const _fTotalR30    = filtered.detail.reduce((s, g) => s + (g.r30 || 0), 0);
+    const _fStores      = new Set(filtered.detail.map(g => g.sn)).size;
+    const _fProblems    = new Set(filtered.detail.map(g => g.prob)).size;
+    const _m1 = document.getElementById('repeat-total-wos');  if (_m1) _m1.textContent = _fTotalPairs.toLocaleString();
+    const _m2 = document.getElementById('repeat-count');       if (_m2) _m2.textContent = _fTotalR30.toLocaleString();
+    const _m3 = document.getElementById('repeat-ftfr');        if (_m3) _m3.textContent = _fStores.toLocaleString();
+    const _m4 = document.getElementById('repeat-store-count'); if (_m4) _m4.textContent = _fProblems.toLocaleString();
+    // ───────────────────────────────────────────────────────────────────
+
+    // Sort
+    const sk = repeatCurrentSort.field;
+    const mult = repeatCurrentSort.direction === 'asc' ? 1 : -1;
+    
+    console.log('Rendering view:', repeatCurrentView);
+    console.log('View data: byProblem=' + filtered.byProblem.length + ', byStore=' + filtered.byStore.length + ', byDirector=' + filtered.byDirector.length + ', detail=' + filtered.detail.length);
+    
+    switch(repeatCurrentView) {
+        case 'by-problem':
+            filtered.byProblem.sort((a, b) => {
+                let av, bv;
+                if (sk === 'problem') { av = a.problem; bv = b.problem; return av.localeCompare(bv) * mult; }
+                if (sk === 'total') { av = a.totalWOs; bv = b.totalWOs; }
+                if (sk === 'repeat') { av = a.repeatCount; bv = b.repeatCount; }
+                if (sk === 'rate') { av = a.rate; bv = b.rate; }
+                return (av - bv) * mult;
+            });
+            
+            const pb = document.getElementById('repeat-by-problem-body');
+            console.log('repeat-by-problem-body element exists?', !!pb);
+            if (!pb) {
+                console.error('❌ repeat-by-problem-body not found!');
+                return;
+            }
+            const probHtml = filtered.byProblem.map(p => `<tr class="hover:bg-gray-50"><td class="px-4 py-3 text-gray-900">${p.problem || 'Unknown'}</td><td class="px-4 py-3 text-center text-gray-900 font-semibold">${p.totalWOs}</td><td class="px-4 py-3 text-center text-red-600 font-semibold">${p.repeatCount}</td><td class="px-4 py-3 text-center text-gray-900"><span class="px-2 py-1 rounded-full text-white text-xs font-semibold" style="background-color: ${p.rate > 30 ? '#ea1100' : p.rate > 15 ? '#f59e0b' : '#2a8703'}">${p.rate}%</span></td><td class="px-4 py-3 text-gray-900">${p.affectedStores}</td></tr>`).join('');
+            console.log('Problem HTML length:', probHtml.length);
+            pb.innerHTML = probHtml;
+            console.log('✅ HTML inserted into repeat-by-problem-body');
+            break;
+            
+        case 'by-store':
+            console.log('Rendering by-store with', filtered.byStore.length, 'items');
+            filtered.byStore.sort((a, b) => {
+                let av, bv;
+                if (sk === 'store') { av = a.store; bv = b.store; return av.localeCompare(bv) * mult; }
+                if (sk === 'repeat-store') { av = a.issues; bv = b.issues; }
+                return (av - bv) * mult;
+            });
+            
+            const sb = document.getElementById('repeat-by-store-body');
+            console.log('repeat-by-store-body element exists?', !!sb);
+            if (!sb) {
+                console.error('❌ repeat-by-store-body not found!');
+                return;  // Safety check
+            }
+            const htmlRows = filtered.byStore.map(s => {
+                const isActive = window._repeatActiveStore === s.store;
+                const rowCls = isActive
+                    ? 'bg-blue-100 border-l-4 border-[#0053e2] cursor-pointer'
+                    : 'hover:bg-blue-50 cursor-pointer transition border-l-4 border-transparent';
+                const chevron = isActive ? '&#x25BC;' : '&#x25B6;';
+                return `<tr class="${rowCls}" id="repeat-store-row-${s.store}" onclick="repeatSliceStore('${s.store}')">
+                    <td class="px-4 py-3 font-bold text-[#0053e2]">${chevron} #${s.store}</td>
+                    <td class="px-4 py-3 text-gray-700 text-sm">${s.dir || '--'}</td>
+                    <td class="px-4 py-3 text-gray-700 text-sm">${s.rm || '--'}</td>
+                    <td class="px-4 py-3 text-center font-bold text-red-600">${s.issues}</td>
+                    <td class="px-4 py-3 text-gray-600 text-xs">${s.problems}</td>
+                </tr>`;
+            }).join('');
+            console.log('Generated HTML length:', htmlRows.length);
+            sb.innerHTML = htmlRows;
+            console.log('\u2705 HTML inserted into repeat-by-store-body');
+            // NOTE: do NOT call repeatSliceStore here — it causes a toggle-off loop.
+            // The slicer stays open via its own state; row highlighting is rendered above.
+            break;
+        case 'by-director':
+            console.log('Rendering by-director with', filtered.byDirector.length, 'items');
+            filtered.byDirector.sort((a, b) => {
+                let av, bv;
+                if (sk === 'director') { av = a.director; bv = b.director; return av.localeCompare(bv) * mult; }
+                if (sk === 'director-stores') { av = a.storeCount; bv = b.storeCount; }
+                if (sk === 'director-repeats') { av = a.repeats; bv = b.repeats; }
+                return (av - bv) * mult;
+            });
+            
+            const db = document.getElementById('repeat-by-director-body');
+            console.log('repeat-by-director-body element exists?', !!db);
+            if (!db) {
+                console.error('❌ repeat-by-director-body not found!');
+                return;  // Safety check
+            }
+            const dirHtml = filtered.byDirector.map(d => `<tr class="hover:bg-gray-50"><td class="px-4 py-3 text-gray-900 font-semibold">${d.director || 'Unknown'}</td><td class="px-4 py-3 text-center text-gray-900">${d.storeCount}</td><td class="px-4 py-3 text-center text-red-600 font-semibold">${d.repeats}</td><td class="px-4 py-3 text-gray-700 text-sm">${d.topProblem}</td></tr>`).join('');
+            console.log('Director HTML length:', dirHtml.length);
+            db.innerHTML = dirHtml;
+            console.log('✅ HTML inserted into repeat-by-director-body');
+            break;
+            
+        case 'detail':
+            filtered.detail.sort((a, b) => {
+                let av, bv;
+                if (sk === 'detail-store') { av = a.sn; bv = b.sn; return av.localeCompare(bv) * mult; }
+                if (sk === 'detail-cnt')   { av = a.cnt;  bv = b.cnt; }
+                if (sk === 'detail-r30')   { av = a.r30;  bv = b.r30; }
+                if (sk === 'detail-nte')   { av = a.nte;  bv = b.nte; }
+                if (sk === 'detail-lc')    { av = new Date(a.lc); bv = new Date(b.lc); }
+                return ((av || 0) - (bv || 0)) * mult;
+            });
+            const dtl = document.getElementById('repeat-detail-body');
+            if (!dtl) { console.error('❌ repeat-detail-body not found!'); return; }
+            dtl.innerHTML = filtered.detail.map((w, i) => {
+                const uid = 'dt' + i;
+                const assetHtml = _repeatAssetHtml(w);
+                const descHtml  = _repeatDescHtml(w, uid);
+                const pcdBadge  = w.pcd && w.pcd !== w.prob
+                    ? `<span class="inline-block px-1.5 py-0.5 rounded-full text-[10px] bg-purple-50 text-purple-700 border border-purple-200 font-medium">${w.pcd.length > 22 ? w.pcd.slice(0,20)+'…' : w.pcd}</span>`
+                    : '';
+                return `<tr class="hover:bg-gray-50 align-top">
+                <td class="px-3 py-2 text-gray-900 font-semibold whitespace-nowrap">#${w.sn}</td>
+                <td class="px-3 py-2 text-gray-700 text-xs">
+                    <span class="font-medium">${w.prob || ''}</span>
+                    ${pcdBadge ? '<br>' + pcdBadge : ''}
+                </td>
+                <td class="px-3 py-2 text-xs max-w-[220px]">
+                    ${assetHtml}
+                    ${descHtml}
+                </td>
+                <td class="px-3 py-2 text-gray-500 text-xs whitespace-nowrap">${w.trade || ''}</td>
+                <td class="px-3 py-2 text-center font-semibold text-gray-900">${w.cnt}</td>
+                <td class="px-3 py-2 text-center">
+                    <span class="px-2 py-0.5 rounded-full text-white text-xs font-bold" style="background-color:${w.r30 >= 3 ? '#ea1100' : '#f59e0b'}">${w.r30}</span>
+                </td>
+                <td class="px-3 py-2 text-gray-700 text-xs whitespace-nowrap">${w.lc ? new Date(w.lc).toLocaleDateString() : 'N/A'}</td>
+                <td class="px-3 py-2 text-right text-gray-900 text-xs whitespace-nowrap">${w.nte ? '$' + w.nte.toLocaleString(undefined,{maximumFractionDigits:0}) : '—'}</td>
+                <td class="px-3 py-2 text-gray-700 text-xs">${w.dir || '—'}</td>
+                <td class="px-3 py-2 text-gray-700 text-xs">${w.sr || '—'}</td>
+            </tr>`;
+            }).join('');
+            break;
+    }
+}
+
+// ── Name search registration ─────────────────────────────────────────────────
+registerNameSearch('repeat', {
+    orgIds: [
+        { key: 'sr',  filterId: 'repeatSr',  label: 'Sr. Director' },
+        { key: 'dir', filterId: 'repeatDir', label: 'FM Director' },
+        { key: 'rm',  filterId: 'repeatRm',  label: 'FM Regional' },
+        { key: 'fsm', filterId: 'repeatFsm', label: 'FS Manager' },
+    ],
+    applyFn: 'repeatApplyFilter'
+});
+
+// Flag for lazy loading
+window._repeatWODataLoaded = false;
+</script>

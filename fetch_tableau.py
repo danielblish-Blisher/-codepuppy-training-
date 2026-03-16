@@ -137,7 +137,7 @@ def main() -> int:
         _save_empty("tableau_metric_pulse")
         return 1
 
-    ok = 0
+    # "Tech Output" view is massive. Switched to "Technician Summary" (aggregated)
     ok += fetch_view(server, "Technician Summary",   "tableau_tech_output",  timeout=CSV_TIMEOUT_XL)
     ok += fetch_view(server, "Uptime KPI Dashboard", "tableau_metric_pulse")
 

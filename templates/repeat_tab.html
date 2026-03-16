@@ -1,0 +1,316 @@
+<!-- Repeat Work Orders Tab -->
+<div id="repeat-content" class="tab-content hidden">
+    <!-- Header & Filters -->
+    <div class="bg-gradient-to-r from-[#0053e2] to-[#003aa3] text-white p-6 rounded-lg mb-6">
+        <div class="flex items-center gap-3 mb-4">
+    <h2 class="text-2xl font-bold">🔄 Repeat Work Orders Analysis</h2>
+    <!-- Info Icon -->
+    <button onclick="document.getElementById('repeat-info-modal').classList.toggle('hidden')" class="w-7 h-7 rounded-full bg-white/20 hover:bg-white/30 text-white flex items-center justify-center text-sm font-bold" title="How this data works" aria-label="Data methodology info">
+        ℹ️
+    </button>
+    <button onclick="location.reload()" class="px-3 py-1.5 bg-blue-100 hover:bg-blue-200 text-blue-700 font-semibold rounded-md text-sm flex items-center gap-1" title="Refresh data">
+        🔄 Refresh
+    </button>
+</div>
+        <p class="text-blue-100">Track work orders that have been repeated or recalled at the same location</p>
+    </div>
+
+    <!-- Info Modal -->
+    <div id="repeat-info-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/40" onclick="if(event.target===this)this.classList.add('hidden')">
+        <div class="bg-white rounded-xl shadow-2xl max-w-lg w-full mx-4 overflow-hidden" role="dialog" aria-labelledby="repeat-info-title">
+            <div class="bg-gradient-to-r from-[#0053e2] to-[#003aa3] text-white px-6 py-4 flex items-center justify-between">
+                <h3 id="repeat-info-title" class="text-lg font-bold">ℹ️ Data Source & Methodology</h3>
+                <button onclick="document.getElementById('repeat-info-modal').classList.add('hidden')" class="text-white/80 hover:text-white text-2xl leading-none" aria-label="Close">&times;</button>
+            </div>
+            <div class="px-6 py-5 text-sm text-gray-700 space-y-4 max-h-[70vh] overflow-y-auto">
+                <div>
+                    <h4 class="font-bold text-[#0053e2] mb-1">📡 Data Source</h4>
+                    <p>Aggregated from <strong>BigQuery</strong> <code class="bg-gray-100 px-1 rounded text-xs">re-crystal-mdm-prod.crystal.sc_workorder</code> — all <strong>FM trades</strong>, completed in the <strong>last 12 months</strong> (routine PM / Scheduled Service excluded).</p>
+                </div>
+                <div>
+                    <h4 class="font-bold text-[#0053e2] mb-1">🔄 What Counts as a “Repeat”?</h4>
+                    <p>A pattern is flagged as a <strong>repeat</strong> when the <em>same store</em> had the <em>same problem type</em> completed <strong>more than once within 30 days</strong> in the last 12 months. Specifically:</p>
+                    <ol class="list-decimal ml-5 mt-1 space-y-1">
+                        <li>All FM completed WOs are grouped by <strong>Store # + Problem Type</strong> using a <em>LAG window function</em> in BigQuery.</li>
+                        <li>Any pair with a consecutive completion within <strong>30 days</strong> is flagged as a repeat.</li>
+                        <li>Each row in this view represents one store+problem pair with repeat history. <strong>Repeats (30d)</strong> counts how many consecutive completions were within 30 days.</li>
+                    </ol>
+                </div>
+                <div>
+                    <h4 class="font-bold text-[#0053e2] mb-1">📊 Key Metrics Explained</h4>
+                    <ul class="space-y-1">
+                        <li><strong>Store+Problem Pairs</strong> — Unique store+problem combinations with at least one 30-day repeat in the last 12 months.</li>
+                        <li><strong>30-Day Repeat Incidents</strong> — Total count of consecutive completions within 30 days across all pairs.</li>
+                        <li><strong>Stores Affected</strong> — Number of unique store locations with at least one repeat pattern.</li>
+                        <li><strong>Unique Problem Types</strong> — Distinct problem types appearing in repeat patterns.</li>
+                    </ul>
+                </div>
+                <div>
+                    <h4 class="font-bold text-[#0053e2] mb-1">🔍 Views</h4>
+                    <ul class="space-y-1">
+                        <li><strong>By Problem Type</strong> — Groups repeats by problem category to show which issue types recur most.</li>
+                        <li><strong>By Store</strong> — Shows which stores have the most repeat visits.</li>
+                        <li><strong>By Director</strong> — Aggregates repeat patterns by FM Director for leadership visibility.</li>
+                        <li><strong>Detail List</strong> — Full list of individual repeat work orders with sortable columns.</li>
+                    </ul>
+                </div>
+                <div class="bg-gray-50 rounded-lg p-3 text-xs text-gray-500">
+                    <strong>Note:</strong> Data refreshes when the dashboard syncs with BigQuery. Org hierarchy (SR Director, FM Director, Regional, FS Manager) is enriched from the stores dataset. Filters apply across all views.
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Debug Info -->
+    <div id="repeat-debug" class="hidden bg-yellow-100 p-3 mb-4 rounded text-sm text-yellow-900"></div>
+    
+    <!-- Key Metrics -->
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+        <div id="repeat-metric-total" class="bg-white border-l-4 border-blue-500 p-4 rounded-lg shadow-sm">
+            <div class="text-sm text-gray-600 font-semibold" id="repeat-lbl-total-wos">Store+Problem Pairs</div>
+            <div class="text-3xl font-bold text-gray-900" id="repeat-total-wos">0</div>
+        </div>
+        <div id="repeat-metric-repeat" class="bg-white border-l-4 border-red-500 p-4 rounded-lg shadow-sm">
+            <div class="text-sm text-gray-600 font-semibold" id="repeat-lbl-count">30-Day Repeat Incidents</div>
+            <div class="text-3xl font-bold text-red-600" id="repeat-count">0</div>
+        </div>
+        <div id="repeat-metric-ffr" class="bg-white border-l-4 border-green-500 p-4 rounded-lg shadow-sm">
+            <div class="text-sm text-gray-600 font-semibold" id="repeat-lbl-ftfr">Stores Affected</div>
+            <div class="text-3xl font-bold text-green-600" id="repeat-ftfr">0</div>
+        </div>
+        <div id="repeat-metric-stores" class="bg-white border-l-4 border-yellow-500 p-4 rounded-lg shadow-sm">
+            <div class="text-sm text-gray-600 font-semibold" id="repeat-lbl-store-count">Unique Problem Types</div>
+            <div class="text-3xl font-bold text-yellow-600" id="repeat-store-count">0</div>
+        </div>
+    </div>
+
+    <!-- Filter Controls -->
+    <div class="bg-white rounded-lg shadow p-4 mb-6">
+        <div class="flex flex-wrap items-center gap-3">
+            <div class="flex items-center gap-1">
+                <span class="text-xs font-semibold text-[#004c91]">SR Director:</span>
+                <select id="repeatSr" onchange="repeatApplyFilter()" class="border border-gray-200 rounded-md px-2 py-1.5 text-xs min-w-[140px]">
+                    <option value="">All SR Directors</option>
+                </select>
+            </div>
+            <div class="flex items-center gap-1">
+                <span class="text-xs font-semibold text-[#004c91]">FM Director:</span>
+                <select id="repeatDir" onchange="repeatApplyFilter()" class="border border-gray-200 rounded-md px-2 py-1.5 text-xs min-w-[140px]">
+                    <option value="">All Directors</option>
+                </select>
+            </div>
+            <div class="flex items-center gap-1">
+                <span class="text-xs font-semibold text-[#004c91]">FM Regional:</span>
+                <select id="repeatRm" onchange="repeatApplyFilter()" class="border border-gray-200 rounded-md px-2 py-1.5 text-xs min-w-[140px]">
+                    <option value="">All Regionals</option>
+                </select>
+            </div>
+            <div class="flex items-center gap-1">
+                <span class="text-xs font-semibold text-[#004c91]">FS Manager:</span>
+                <select id="repeatFsm" onchange="repeatApplyFilter()" class="border border-gray-200 rounded-md px-2 py-1.5 text-xs min-w-[140px]">
+                    <option value="">All FS Managers</option>
+                </select>
+            </div>
+            <div class="flex items-center gap-1">
+                <span class="text-xs font-semibold text-[#004c91]">Problem Type:</span>
+                <select id="repeatProb" onchange="repeatApplyFilter()" class="border border-gray-200 rounded-md px-2 py-1.5 text-xs min-w-[140px]">
+                    <option value="">All Problems</option>
+                </select>
+            </div>
+            <div class="flex items-center gap-1">
+                <span class="text-xs font-semibold text-[#004c91]">Status:</span>
+                <select id="repeatStatus" onchange="repeatApplyFilter()" class="border border-gray-200 rounded-md px-2 py-1.5 text-xs min-w-[120px]">
+                    <option value="">All Statuses</option>
+                </select>
+            </div>
+            <div class="flex items-center gap-1">
+                <span class="text-xs font-semibold text-[#004c91]">Priority:</span>
+                <select id="repeatPriority" onchange="repeatApplyFilter()" class="border border-gray-200 rounded-md px-2 py-1.5 text-xs min-w-[120px]">
+                    <option value="">All Priorities</option>
+                </select>
+            </div>
+            <div class="relative">
+                <input type="text" id="repeatNameSearch" placeholder="Search by name..." autocomplete="off"
+                    oninput="nameSearch('repeat', this.value)"
+                    class="border border-gray-200 rounded-md px-3 py-1.5 text-xs w-44 focus:ring-2 focus:ring-[#0053e2] focus:border-[#0053e2] pl-7">
+                <span class="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-xs">&#x1F50D;</span>
+                <div id="repeatNameResults" class="hidden absolute z-50 mt-1 w-72 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto"></div>
+            </div>
+            <button onclick="repeatReset()" class="text-xs text-[#0053e2] hover:underline">Reset</button>
+        </div>
+    </div>
+
+    <!-- ⚠️ Select-a-name prompt: shown until a filter is chosen -->
+    <div id="repeat-select-prompt" class="mb-6 bg-blue-50 border border-[#0053e2] rounded-xl px-6 py-8 flex flex-col items-center justify-center text-center gap-3">
+        <span class="text-5xl">🔍</span>
+        <p class="text-lg font-bold text-[#0053e2]">Select a Name to Load Data</p>
+        <p class="text-sm text-gray-600 max-w-md">Choose a <strong>Sr. Director</strong>, <strong>FM Director</strong>, <strong>FM Regional</strong>, or <strong>FS Manager</strong> above to view their repeat work order data. This keeps the dashboard fast by only loading what you need.</p>
+    </div>
+
+    <!-- Tabs for Different Views -->
+    <div class="mb-4" id="repeat-tabs-container">
+        <div class="flex gap-2 border-b border-gray-200">
+            <button onclick="switchRepeatView('by-problem')" id="repeat-view-problem" class="px-4 py-2 font-semibold border-b-2 border-blue-500 text-blue-600">By Problem Type</button>
+            <button onclick="switchRepeatView('by-store')" id="repeat-view-store" class="px-4 py-2 font-semibold border-b-2 border-transparent text-gray-600 hover:text-gray-900">By Store</button>
+            <button onclick="switchRepeatView('by-director')" id="repeat-view-director" class="px-4 py-2 font-semibold border-b-2 border-transparent text-gray-600 hover:text-gray-900">By Director</button>
+            <button onclick="switchRepeatView('detail')" id="repeat-view-detail" class="px-4 py-2 font-semibold border-b-2 border-transparent text-gray-600 hover:text-gray-900">Detail List</button>
+        </div>
+    </div>
+
+    <!-- Empty state: shown when a filter is active but no repeat WOs match -->
+    <div id="repeat-empty-notice" class="hidden mb-4">
+        <div class="bg-yellow-50 border border-yellow-300 rounded-lg px-5 py-4 flex items-start gap-3">
+            <span class="text-2xl">&#x1F50D;</span>
+            <div>
+                <p class="font-semibold text-yellow-800" id="repeat-empty-title">No repeat work orders found</p>
+                <p class="text-sm text-yellow-700 mt-0.5" id="repeat-empty-sub">This territory has no completed repeat FM work orders in the last 12 months. Try &#x201C;All Senior Directors&#x201D; or adjust other filters.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- By Problem Type View -->
+    <div id="repeat-by-problem" class="repeat-view-content">
+        <div class="bg-white rounded-lg shadow-sm overflow-hidden border border-gray-200">
+            <div class="flex justify-between items-center px-4 pt-3"><h3 class="text-lg font-semibold text-[#004c91]">By Problem Type</h3><button onclick="exportTableCSV(document.getElementById('repeat-by-problem-body')?.closest('table'),'repeat_wo_by_problem')" title="Export CSV" class="px-2 py-1 text-xs font-medium text-gray-500 hover:text-[#0053e2] hover:bg-blue-50 rounded transition border border-transparent hover:border-blue-200">📥</button></div>
+            <table class="w-full">
+                <thead class="bg-gray-50 border-b border-gray-200">
+                    <tr>
+                        <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-100" onclick="repeatSort('problem')">Problem Type ↕</th>
+                        <th class="px-4 py-3 text-center text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-100" onclick="repeatSort('total')">Total WOs ↕</th>
+                        <th class="px-4 py-3 text-center text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-100" onclick="repeatSort('repeat')">Repeat Count ↕</th>
+                        <th class="px-4 py-3 text-center text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-100" onclick="repeatSort('rate')">Repeat Rate ↕</th>
+                        <th class="px-4 py-3 text-center text-sm font-semibold text-gray-700">Affected Stores</th>
+                    </tr>
+                </thead>
+                <tbody id="repeat-by-problem-body" class="divide-y divide-gray-200">
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- By Store View -->
+    <div id="repeat-by-store" class="repeat-view-content hidden">
+        <div class="bg-white rounded-lg shadow-sm overflow-hidden border border-gray-200">
+            <div class="flex justify-between items-center px-4 pt-3"><h3 class="text-lg font-semibold text-[#004c91]">By Store</h3><button onclick="exportTableCSV(document.getElementById('repeat-by-store-body')?.closest('table'),'repeat_wo_by_store')" title="Export CSV" class="px-2 py-1 text-xs font-medium text-gray-500 hover:text-[#0053e2] hover:bg-blue-50 rounded transition border border-transparent hover:border-blue-200">📥</button></div>
+            <table class="w-full">
+                <thead class="bg-gray-50 border-b border-gray-200">
+                    <tr>
+                        <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-100" onclick="repeatSort('store')">Store ↕</th>
+                        <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700">Director</th>
+                        <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700">Region</th>
+                        <th class="px-4 py-3 text-center text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-100" onclick="repeatSort('repeat-store')">Repeat Issues ↕</th>
+                        <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700">Problem Types</th>
+                    </tr>
+                </thead>
+                <tbody id="repeat-by-store-body" class="divide-y divide-gray-200">
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Store Slicer Panel (shown when a store row is clicked) -->
+    <div id="repeat-store-slicer" class="hidden mt-4 bg-white border-2 border-[#0053e2] rounded-xl shadow-lg overflow-hidden">
+        <div class="bg-gradient-to-r from-[#0053e2] to-[#003aa3] text-white px-5 py-3 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <span class="text-xl">🏪</span>
+                <div>
+                    <p class="font-bold text-base" id="repeat-slicer-title">Store Details</p>
+                    <p class="text-blue-200 text-xs" id="repeat-slicer-sub"></p>
+                </div>
+            </div>
+            <button onclick="repeatSliceStore(null)" class="text-white/70 hover:text-white text-2xl leading-none" aria-label="Close slicer">&times;</button>
+        </div>
+        <!-- Mini KPIs -->
+        <div class="grid grid-cols-3 gap-3 px-5 py-3 bg-blue-50 border-b border-blue-100">
+            <div class="text-center">
+                <p class="text-xs text-gray-500 font-semibold">Problem Types</p>
+                <p class="text-xl font-bold text-[#0053e2]" id="repeat-slicer-pairs">--</p>
+            </div>
+            <div class="text-center">
+                <p class="text-xs text-gray-500 font-semibold">30-Day Repeats</p>
+                <p class="text-xl font-bold text-red-600" id="repeat-slicer-r30">--</p>
+            </div>
+            <div class="text-center">
+                <p class="text-xs text-gray-500 font-semibold">Total NTE</p>
+                <p class="text-xl font-bold text-gray-800" id="repeat-slicer-nte">--</p>
+            </div>
+        </div>
+        <!-- Work Orders Table -->
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead class="bg-gray-50 border-b border-gray-200">
+                    <tr>
+                        <th class="px-4 py-2 text-left font-semibold text-gray-600">Problem Type</th>
+                        <th class="px-4 py-2 text-left font-semibold text-gray-600">Assets / Description</th>
+                        <th class="px-4 py-2 text-left font-semibold text-gray-600">Trade</th>
+                        <th class="px-4 py-2 text-center font-semibold text-gray-600">Completions</th>
+                        <th class="px-4 py-2 text-center font-semibold text-gray-600">Repeats (30d)</th>
+                        <th class="px-4 py-2 text-left font-semibold text-gray-600">First Seen</th>
+                        <th class="px-4 py-2 text-left font-semibold text-gray-600">Last Seen</th>
+                        <th class="px-4 py-2 text-right font-semibold text-gray-600">Avg NTE</th>
+                        <th class="px-4 py-2 text-right font-semibold text-gray-600">Total NTE</th>
+                        <th class="px-4 py-2 text-left font-semibold text-gray-600">Tracking #s</th>
+                    </tr>
+                </thead>
+                <tbody id="repeat-slicer-body" class="divide-y divide-gray-100"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- By Director View -->
+    <div id="repeat-by-director" class="repeat-view-content hidden">
+        <div class="bg-white rounded-lg shadow-sm overflow-hidden border border-gray-200">
+            <div class="flex justify-between items-center px-4 pt-3"><h3 class="text-lg font-semibold text-[#004c91]">By Director</h3><button onclick="exportTableCSV(document.getElementById('repeat-by-director-body')?.closest('table'),'repeat_wo_by_director')" title="Export CSV" class="px-2 py-1 text-xs font-medium text-gray-500 hover:text-[#0053e2] hover:bg-blue-50 rounded transition border border-transparent hover:border-blue-200">📥</button></div>
+            <table class="w-full">
+                <thead class="bg-gray-50 border-b border-gray-200">
+                    <tr>
+                        <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-100" onclick="repeatSort('director')">Director ↕</th>
+                        <th class="px-4 py-3 text-center text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-100" onclick="repeatSort('director-stores')">Stores Affected ↕</th>
+                        <th class="px-4 py-3 text-center text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-100" onclick="repeatSort('director-repeats')">Total Repeats ↕</th>
+                        <th class="px-4 py-3 text-center text-sm font-semibold text-gray-700">Top Problem</th>
+                    </tr>
+                </thead>
+                <tbody id="repeat-by-director-body" class="divide-y divide-gray-200">
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Detail List View -->
+    <div id="repeat-detail" class="repeat-view-content hidden">
+        <div class="bg-white rounded-lg shadow-sm overflow-x-auto border border-gray-200">
+            <div class="flex justify-between items-center px-4 pt-3"><h3 class="text-lg font-semibold text-[#004c91]">Detail List</h3><button onclick="exportTableCSV(document.getElementById('repeat-detail-body')?.closest('table'),'repeat_wo_detail')" title="Export CSV" class="px-2 py-1 text-xs font-medium text-gray-500 hover:text-[#0053e2] hover:bg-blue-50 rounded transition border border-transparent hover:border-blue-200">📥</button></div>
+            <table class="w-full text-sm">
+                <thead class="bg-gray-50 border-b border-gray-200 sticky top-0">
+                    <tr>
+                        <th class="px-3 py-2 text-left font-semibold text-gray-700 cursor-pointer hover:bg-gray-100" onclick="repeatSort('detail-store')">Store ↕</th>
+                        <th class="px-3 py-2 text-left font-semibold text-gray-700">Problem</th>
+                        <th class="px-3 py-2 text-left font-semibold text-gray-700">Assets / Description</th>
+                        <th class="px-3 py-2 text-left font-semibold text-gray-700">Trade</th>
+                        <th class="px-3 py-2 text-center font-semibold text-gray-700 cursor-pointer hover:bg-gray-100" onclick="repeatSort('detail-cnt')">Completions ↕</th>
+                        <th class="px-3 py-2 text-center font-semibold text-gray-700 cursor-pointer hover:bg-gray-100" onclick="repeatSort('detail-r30')">Repeats (30d) ↕</th>
+                        <th class="px-3 py-2 text-left font-semibold text-gray-700 cursor-pointer hover:bg-gray-100" onclick="repeatSort('detail-lc')">Last Completed ↕</th>
+                        <th class="px-3 py-2 text-right font-semibold text-gray-700 cursor-pointer hover:bg-gray-100" onclick="repeatSort('detail-nte')">Total NTE ↕</th>
+                        <th class="px-3 py-2 text-left font-semibold text-gray-700">Director</th>
+                        <th class="px-3 py-2 text-left font-semibold text-gray-700">Sr Director</th>
+                    </tr>
+                </thead>
+                <tbody id="repeat-detail-body" class="divide-y divide-gray-200">
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <div class="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg text-sm text-gray-700">
+        <p><strong>ℹ️ How to Read This:</strong></p>
+        <ul class="list-disc ml-5 mt-2 space-y-1">
+            <li><strong>Repeats (30d)</strong> = consecutive completions of the same problem at the same store within 30 days — higher = more problematic</li>
+            <li><strong>By Problem Type</strong> shows which FM issue categories keep recurring across all stores</li>
+            <li><strong>By Store</strong> shows which locations have the most chronic repeat issues</li>
+            <li><strong>By Director</strong> shows area responsibility and top repeat territories</li>
+            <li><strong>Detail List</strong> shows every store+problem pair — sortable by repeat count, NTE, or last seen date</li>
+        </ul>
+    </div>
+</div>
+

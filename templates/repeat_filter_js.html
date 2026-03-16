@@ -1,0 +1,292 @@
+<script>
+// Repeat Work Orders Data & Logic
+let repeatWOData = {
+    byProblem: [],
+    byStore: [],
+    byDirector: [],
+    detail: [],
+    allWOs: [],
+    allStores: {}
+};
+
+let repeatCurrentSort = { field: 'repeat', direction: 'desc' };
+let repeatCurrentView = 'by-problem';
+let repeatFilters = {
+    sr: '',
+    ops: '',
+    dir: '',
+    rm: '',
+    fsm: '',
+    prob: '',
+    status: '',
+    priority: ''
+};
+
+
+
+function _repeatPopulate(id, values) {
+    const sel = document.getElementById(id);
+    if (!sel) return;
+    const cur = sel.value;
+    const normalized = values.map(v => (v && v.indexOf('Unassigned') === 0) ? 'Unassigned' : v);
+    let opts = [...new Set(normalized)].filter(Boolean).sort();
+    // Always keep the currently-selected value in the list so it never disappears
+    if (cur && !opts.includes(cur)) opts = [cur, ...opts].sort();
+    const firstLabel = sel.options.length > 0 ? sel.options[0].text : 'All';
+    sel.innerHTML = '<option value="">' + firstLabel + '</option>' +
+        opts.map(v => '<option value="' + v + '"' + (v === cur ? ' selected' : '') + '>' + v + '</option>').join('');
+}
+
+// ── Asset chips + description helpers ────────────────────────────────────────
+// Shared by both the slicer panel and the detail table row renderers.
+
+function _repeatAssetHtml(w) {
+    // `assets` is a comma-separated string of "desc~tagid~count" triplets from BQ.
+    // Each triplet represents one unique (equipment_desc, equipment_tagid) pair
+    // with the total number of work orders for that asset within this store+problem group.
+    const raw = (w.assets || '').trim();
+    if (!raw) return '<span class="text-gray-400 text-xs">—</span>';
+
+    const fmt = n => Number(n).toLocaleString('en-US');  // North American formatting: 1,234
+
+    const chips = raw.split(',').map(triplet => {
+        const parts = triplet.split('~');
+        const desc  = (parts[0] || '').trim();
+        const tagid = (parts[1] || '').trim();
+        const count = parseInt(parts[2] || '0', 10);
+        if (!desc) return '';
+
+        const label    = desc.length > 26 ? desc.slice(0, 24) + '…' : desc;
+        const tagBadge = tagid
+            ? `<span class="ml-1 font-mono text-[10px] bg-indigo-100 text-indigo-600 px-1 rounded">ID:${tagid}</span>`
+            : '';
+        const countBadge = `<span class="ml-1 text-[10px] font-bold bg-white border border-indigo-300 text-indigo-800 px-1.5 rounded-full">${fmt(count)} WOs</span>`;
+
+        return `<span class="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[11px] font-medium bg-indigo-50 text-indigo-700 border border-indigo-200 whitespace-nowrap" title="${desc}${tagid ? ' · ' + tagid : ''} · ${fmt(count)} work orders">
+            🔧 ${label}${tagBadge}${countBadge}
+        </span>`;
+    }).filter(Boolean).join(' ');
+
+    return `<div class="flex flex-wrap gap-1">${chips}</div>`;
+}
+
+function _repeatDescHtml(w, uid) {
+    // Shows up to 3 sample SC problem descriptions in an expandable block.
+    const descs = (w.descs || '').split('|').map(s => s.trim()).filter(Boolean);
+    if (!descs.length) return '';
+    const btnId  = 'rdesc-btn-'  + uid;
+    const bodyId = 'rdesc-body-' + uid;
+    const preview = descs[0].length > 60 ? descs[0].slice(0, 58) + '…' : descs[0];
+    const allHtml = descs.map((d, i) =>
+        `<div class="${i > 0 ? 'mt-1 pt-1 border-t border-gray-100' : ''}">
+            <span class="text-gray-500 text-[10px] font-semibold uppercase mr-1">SC Desc ${i + 1}:</span>
+            <span class="text-gray-700">${d}</span>
+         </div>`
+    ).join('');
+    return `
+    <div class="mt-1">
+        <button id="${btnId}" onclick="_repeatToggleDesc('${bodyId}','${btnId}')" class="text-[10px] text-[#0053e2] hover:underline flex items-center gap-1">
+            <span class="desc-arrow">▶</span> <span class="text-gray-600 italic">${preview}</span>
+        </button>
+        <div id="${bodyId}" class="hidden mt-1 p-2 bg-gray-50 border border-gray-200 rounded text-xs leading-relaxed max-w-sm">${allHtml}</div>
+    </div>`;
+}
+
+function _repeatToggleDesc(bodyId, btnId) {
+    const body = document.getElementById(bodyId);
+    const btn  = document.getElementById(btnId);
+    if (!body) return;
+    const isHidden = body.classList.toggle('hidden');
+    const arrow = btn ? btn.querySelector('.desc-arrow') : null;
+    if (arrow) arrow.textContent = isHidden ? '▶' : '▼';
+}
+
+function loadRepeatWOData(groups) {
+    "use strict";
+    // `groups` is an array of pre-aggregated store+problem pairs from BQ.
+    // Each record: {sn, prob, trade, cat, cnt, fc, lc, nte, avgnte, mindays, r30, sr, dir, rm, fsm, mkt}
+    try {
+    const debugEl = document.getElementById('repeat-debug');
+    if (!groups || groups.length === 0) {
+        console.warn('⚠️  Repeat WO: No aggregated data');
+        return;
+    }
+    console.log('✅ Repeat WO: Loading', groups.length, 'store+problem pairs. Sample:', groups[0]);
+
+    // ── Build byProblem ──────────────────────────────────────────────────────
+    const probMap = {};
+    groups.forEach(g => {
+        if (!probMap[g.prob]) probMap[g.prob] = { problem: g.prob, totalWOs: 0, repeatCount: 0, affectedStores: new Set() };
+        probMap[g.prob].totalWOs     += g.cnt;    // total completions
+        probMap[g.prob].repeatCount  += g.r30;    // 30-day repeat incidents
+        probMap[g.prob].affectedStores.add(g.sn);
+    });
+    repeatWOData.byProblem = Object.values(probMap).map(p => ({
+        ...p,
+        affectedStores: p.affectedStores.size,
+        rate: p.totalWOs ? Math.round(100 * p.repeatCount / p.totalWOs) : 0
+    })).sort((a, b) => b.repeatCount - a.repeatCount);
+
+    // ── Build byStore ────────────────────────────────────────────────────────
+    const storeMap = {};
+    groups.forEach(g => {
+        if (!storeMap[g.sn]) storeMap[g.sn] = { store: g.sn, director: g.dir, region: g.rm, issues: 0, problems: new Set(), totalNte: 0 };
+        storeMap[g.sn].issues    += g.r30;
+        storeMap[g.sn].totalNte  += g.nte;
+        storeMap[g.sn].problems.add(g.prob);
+    });
+    repeatWOData.byStore = Object.values(storeMap).map(s => ({
+        ...s,
+        problems: Array.from(s.problems).join(', ')
+    })).sort((a, b) => b.issues - a.issues);
+
+    // ── Build byDirector ─────────────────────────────────────────────────────
+    const dirMap = {};
+    groups.forEach(g => {
+        const d = g.dir || 'Unassigned';
+        if (!dirMap[d]) dirMap[d] = { director: d, stores: new Set(), repeats: 0, problems: {} };
+        dirMap[d].stores.add(g.sn);
+        dirMap[d].repeats += g.r30;
+        dirMap[d].problems[g.prob] = (dirMap[d].problems[g.prob] || 0) + g.r30;
+    });
+    repeatWOData.byDirector = Object.values(dirMap).map(d => {
+        const top = Object.entries(d.problems).sort((a, b) => b[1] - a[1])[0];
+        return { ...d, storeCount: d.stores.size, topProblem: top ? top[0] : 'N/A' };
+    }).sort((a, b) => b.repeats - a.repeats);
+
+    // ── Detail = all groups (for filterable table) ───────────────────────────
+    repeatWOData.detail = groups.slice().sort((a, b) => b.r30 - a.r30);
+
+    // ── Metrics ──────────────────────────────────────────────────────────────
+    const totalPairs   = groups.length;
+    const totalR30     = groups.reduce((s, g) => s + g.r30, 0);
+    const storesWithRepeat = new Set(groups.map(g => g.sn)).size;
+
+    const el1 = document.getElementById('repeat-total-wos');
+    const el2 = document.getElementById('repeat-count');
+    const el3 = document.getElementById('repeat-ftfr');
+    const el4 = document.getElementById('repeat-store-count');
+    // Initialize to '--' — renderRepeatTables will fill these in after a filter is selected
+    if (el1) el1.textContent = '--';
+    if (el2) el2.textContent = '--';
+    if (el3) el3.textContent = '--';
+    if (el4) el4.textContent = '--';
+
+    // Update metric labels to reflect new meaning
+    const lbl1 = document.getElementById('repeat-lbl-total-wos');
+    const lbl2 = document.getElementById('repeat-lbl-count');
+    const lbl3 = document.getElementById('repeat-lbl-ftfr');
+    const lbl4 = document.getElementById('repeat-lbl-store-count');
+    if (lbl1) lbl1.textContent = 'Store+Problem Pairs';
+    if (lbl2) lbl2.textContent = '30-Day Repeat Incidents';
+    if (lbl3) lbl3.textContent = 'Stores Affected';
+    if (lbl4) lbl4.textContent = 'Unique Problem Types';
+
+    // ── Populate filter dropdowns ────────────────────────────────────────────
+    _repeatPopulate('repeatSr',   [...new Set(groups.map(g => g.sr ).filter(Boolean))].sort());
+    _repeatPopulate('repeatDir',  [...new Set(groups.map(g => g.dir).filter(Boolean))].sort());
+    _repeatPopulate('repeatRm',   [...new Set(groups.map(g => g.rm ).filter(Boolean))].sort());
+    _repeatPopulate('repeatFsm',  [...new Set(groups.map(g => g.fsm).filter(Boolean))].sort());
+    _repeatPopulate('repeatProb', [...new Set(groups.map(g => g.prob).filter(Boolean))].sort());
+    // Status/Priority no longer apply to aggregated data — clear those dropdowns
+    _repeatPopulate('repeatStatus',   []);
+    _repeatPopulate('repeatPriority', []);
+
+    if (debugEl) debugEl.innerHTML = '\u2705 ' + totalPairs.toLocaleString() + ' repeat pairs loaded — select a name above to view data';
+    // Do NOT call renderRepeatTables() here — the select-a-name gate will handle it.
+    // Dropdowns are populated; data renders only after the user picks a filter.
+    } catch(e) {
+        console.error('❌ REPEAT WO ERROR:', e);
+    }
+}
+
+function repeatApplyFilter() {
+    console.log('🔄 repeatApplyFilter called');
+    // Safe getter for select elements
+    const getSafe = (id) => {
+        const el = document.getElementById(id);
+        return el ? el.value : '';
+    };
+    
+    const sr = getSafe('repeatSr');
+    const ops = getSafe('repeatOps');
+    const dir = getSafe('repeatDir');
+    const rm = getSafe('repeatRm');
+    const fsm = getSafe('repeatFsm');
+    
+    console.log('Filters: sr=' + sr + ', dir=' + dir + ', rm=' + rm);
+    console.log('repeatWOData.detail length:', repeatWOData.detail ? repeatWOData.detail.length : 'undefined');
+    const prob = getSafe('repeatProb');
+    const status = getSafe('repeatStatus');
+    const priority = getSafe('repeatPriority');
+    
+    repeatFilters.sr = sr;
+    repeatFilters.ops = ops;
+    repeatFilters.dir = dir;
+    repeatFilters.rm = rm;
+    repeatFilters.fsm = fsm;
+    repeatFilters.prob = prob;
+    repeatFilters.status = status;
+    repeatFilters.priority = priority;
+    
+    // Cascade dropdowns with "filter-except-self" logic:
+    // Each dropdown shows options available given all OTHER active filters,
+    // so users can change any filter without needing to Reset first.
+    if (repeatWOData && repeatWOData.detail && repeatWOData.detail.length > 0) {
+        const d = repeatWOData.detail;
+
+        // Helper: filter detail excluding one field
+        const filteredExcept = (skipField) => d.filter(w => {
+            if (skipField !== 'sr'       && sr       && w.sr       !== sr)       return false;
+            if (skipField !== 'ops'      && ops      && w.ops      !== ops)      return false;
+            if (skipField !== 'dir'      && dir      && w.dir      !== dir)      return false;
+            if (skipField !== 'rm'       && rm       && w.rm       !== rm)       return false;
+            if (skipField !== 'fsm'      && fsm      && w.fsm      !== fsm)      return false;
+            if (skipField !== 'prob'     && prob     && w.prob     !== prob)     return false;
+            if (skipField !== 'status'   && status   && w.status   !== status)   return false;
+            if (skipField !== 'priority' && priority && w.priority !== priority) return false;
+            return true;
+        });
+
+        _repeatPopulate('repeatSr',       filteredExcept('sr').map(w => w.sr));
+        _repeatPopulate('repeatOps',      filteredExcept('ops').map(w => w.ops).filter(Boolean));
+        _repeatPopulate('repeatDir',      filteredExcept('dir').map(w => w.dir));
+        _repeatPopulate('repeatRm',       filteredExcept('rm').map(w => w.rm));
+        _repeatPopulate('repeatFsm',      filteredExcept('fsm').map(w => w.fsm));
+        _repeatPopulate('repeatProb',     filteredExcept('prob').map(w => w.prob));
+        _repeatPopulate('repeatStatus',   filteredExcept('status').map(w => w.status));
+        _repeatPopulate('repeatPriority', filteredExcept('priority').map(w => w.priority));
+
+        // Restore selections (they'll stick as long as the value is still valid)
+        const restoreSelect = (id, value) => {
+            const el = document.getElementById(id);
+            if (el && value) el.value = value;
+        };
+        restoreSelect('repeatSr', sr);
+        restoreSelect('repeatOps', ops);
+        restoreSelect('repeatDir', dir);
+        restoreSelect('repeatRm', rm);
+        restoreSelect('repeatFsm', fsm);
+        restoreSelect('repeatProb', prob);
+        restoreSelect('repeatStatus', status);
+        restoreSelect('repeatPriority', priority);
+    }
+    
+    renderRepeatTables();
+}
+
+function repeatReset() {
+    ['repeatSr','repeatOps','repeatDir','repeatRm','repeatFsm','repeatProb','repeatStatus','repeatPriority'].forEach(function(id) {
+        const el = document.getElementById(id);
+        if (el) el.value = '';
+    });
+    nameSearchClear('repeat');
+    // Clear slicer too
+    window._repeatActiveStore = null;
+    const slicer = document.getElementById('repeat-store-slicer');
+    if (slicer) slicer.classList.add('hidden');
+    // Re-run the full cascade so dropdowns repopulate from all repeat data
+    repeatApplyFilter();
+}
+
+</script>
